@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0b1120">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>S.O.M. — S.O.M. QR Viewer · Inventário &amp; Diagrama (QR)</title>
+<style>
+  :root {
+    --bg: #0b1120; --surface: #121c2e; --raised: #1b2840; --border: #283a54;
+    --fg: #edf3fc; --muted: #93a5bf; --accent: #4e93ff; --selected: #233d63; --input: #0d1627;
+    --rov: #2ac99a; --gold: #ffd166;
+    --danger-fg: #ff8da1; --danger-bg: #2c1724; --danger-border: #7c3349;
+    --font: "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+  }
+  [data-theme="ocean"] {
+    --bg: #07131e; --surface: #0d1f30; --raised: #152d44; --border: #234361;
+    --fg: #eaf6ff; --muted: #8cb0c9; --accent: #22b8cf; --selected: #173e57; --input: #091826;
+  }
+  [data-theme="black"] {
+    --bg: #0b0d10; --surface: #14171c; --raised: #20252d; --border: #303741;
+    --fg: #f0f3f7; --muted: #9aa7b8; --accent: #61a3ff; --selected: #253c59; --input: #0e1116;
+  }
+  [data-theme="light"] {
+    --bg: #f0f4fa; --surface: #ffffff; --raised: #e8eef7; --border: #cbd7e6;
+    --fg: #172b45; --muted: #5f728a; --accent: #236fe8; --selected: #dceaff; --input: #f8fafd;
+    --gold: #d97706;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font); font-size: 13px; overflow: hidden;
+  }
+  #outerStage { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; background: #050811; }
+  #appShell { width: 100%; height: 100%; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; position: relative; }
+  body.sim-phone-frame #outerStage { padding: 8px 0; }
+  body.sim-phone-frame #appShell { max-width: 428px; border: 2px solid var(--border); border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.65); }
+
+  .som-slimbar {
+    height: 40px; background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-shrink: 0;
+  }
+  .slim-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .som-logo {
+    width: 24px; height: 24px; border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent), #1d4ed8);
+    color: #fff; font-weight: 700; font-size: 10px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .vessel-short { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+  @media (max-width: 520px) { .vessel-short { display: none; } }
+
+  .tabs-inline { display: inline-flex; background: var(--input); border: 1px solid var(--border); border-radius: 7px; padding: 2px; gap: 2px; }
+  .tab-btn {
+    background: transparent; border: none; color: var(--muted); padding: 4px 9px; border-radius: 5px;
+    cursor: pointer; font-weight: 600; font-size: 11.5px; line-height: 1.2; white-space: nowrap;
+  }
+  .tab-btn.active { background: var(--selected); color: var(--fg); box-shadow: inset 0 0 0 1px var(--accent); }
+  @media (max-width: 430px) {
+    .som-slimbar { padding: 0 5px; gap: 4px; }
+    .slim-left { gap: 4px; }
+    .tab-btn { padding: 4px 6px; font-size: 11px; }
+    .slim-right { gap: 3px; }
+  }
+  .slim-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+
+  .controls-drawer {
+    display: none; background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 8px 10px; flex-direction: column; gap: 7px; flex-shrink: 0;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.35); z-index: 20; max-height: 62vh; overflow-y: auto;
+  }
+  .controls-drawer.open { display: flex; }
+  .drawer-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+  .drawer-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .drawer-divider { height: 1px; background: var(--border); opacity: 0.65; margin: 1px 0; }
+
+  button, select, input { font-family: inherit; font-size: 12px; color: var(--fg); }
+  .btn {
+    background: var(--raised); border: 1px solid var(--border); color: var(--fg);
+    border-radius: 6px; padding: 4px 9px; min-height: 27px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px; font-weight: 500; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.active-toggle { background: var(--selected); border-color: var(--gold); color: var(--gold); font-weight: 600; }
+  .btn.locked-on { background: rgba(42,201,154,0.14); border-color: var(--rov); color: var(--rov); font-weight: 600; }
+  .btn.unlocked-on { background: rgba(255,209,102,0.15); border-color: var(--gold); color: var(--gold); font-weight: 600; }
+  .btn.sm { padding: 3px 7px; min-height: 24px; font-size: 11px; }
+
+  select.inp, input.inp {
+    background: var(--input); border: 1px solid var(--border); color: var(--fg);
+    border-radius: 6px; padding: 3px 7px; min-height: 27px; outline: none;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; padding: 2px 7px;
+    border-radius: 999px; background: var(--raised); border: 1px solid var(--border); color: var(--muted);
+  }
+  .badge.readonly { color: var(--rov); border-color: rgba(42,201,154,0.4); background: rgba(42,201,154,0.1); }
+  .chk-label { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; cursor: pointer; user-select: none; padding: 2px 5px; }
+  .chk-label input { accent-color: var(--accent); margin: 0; }
+
+  #qrBanner {
+    display: none; align-items: center; justify-content: space-between; gap: 6px;
+    padding: 4px 10px; background: rgba(42,201,154,0.15); border-bottom: 1px solid rgba(42,201,154,0.45);
+    font-size: 11.5px; flex-shrink: 0;
+  }
+  #qrBanner.show { display: flex; }
+
+  /* Painel de boas-vindas quando o PWA está vazio aguardando importar o JSON do navio pela 1ª vez */
+  #emptyPwaCard {
+    display: none; position: absolute; inset: 48px 12px 12px; z-index: 15;
+    background: rgba(11, 17, 32, 0.94); border: 1px dashed var(--accent); border-radius: 14px;
+    flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    padding: 22px; gap: 12px;
+  }
+  #emptyPwaCard.show { display: flex; }
+
+  .workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px; gap: 4px; overflow: hidden; }
+  .view-pane { display: none; flex: 1; min-height: 0; flex-direction: column; gap: 4px; overflow: hidden; }
+  .view-pane.active { display: flex; }
+
+  .diagram-stage {
+    flex: 1; min-height: 0; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; position: relative; overflow: hidden; touch-action: none; user-select: none;
+  }
+  #diagramSvg { width: 100%; height: 100%; display: block; cursor: grab; }
+  #diagramSvg.panning { cursor: grabbing; }
+
+  .FloatingLegend {
+    position: absolute; top: 6px; left: 6px; display: flex; gap: 6px; flex-wrap: wrap;
+    background: rgba(18,28,46,0.82); border: 1px solid var(--border); padding: 3px 7px;
+    border-radius: 6px; font-size: 10px; color: var(--muted); pointer-events: none; max-width: calc(100% - 12px);
+  }
+  [data-theme="light"] .FloatingLegend { background: rgba(255,255,255,0.88); }
+  .leg-dot { display: inline-flex; align-items: center; gap: 3px; }
+  .leg-dot i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+  .FloatingZoom {
+    position: absolute; bottom: 7px; right: 7px; display: inline-flex; align-items: center; gap: 3px;
+    background: rgba(18,28,46,0.88); border: 1px solid var(--border); padding: 3px; border-radius: 8px; z-index: 5;
+  }
+  [data-theme="light"] .FloatingZoom { background: rgba(255,255,255,0.92); }
+  .FloatingZoom .zbtn {
+    background: var(--raised); border: 1px solid var(--border); color: var(--fg);
+    border-radius: 5px; min-width: 24px; height: 24px; padding: 0 6px; font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .FloatingZoom .zpct { font-size: 10.5px; color: var(--muted); padding: 0 4px; min-width: 34px; text-align: center; }
+
+  .FloatingCablesBtn {
+    display: none; position: absolute; bottom: 6px; left: 6px; z-index: 6;
+    background: rgba(18,28,46,0.9); border: 1px solid var(--border); color: var(--fg);
+    border-radius: 7px; height: 24px; padding: 0 8px; font-size: 10.5px; font-weight: 600; cursor: pointer;
+    align-items: center; gap: 4px;
+  }
+  [data-theme="light"] .FloatingCablesBtn { background: rgba(255,255,255,0.92); }
+
+  .cable-panel-wrap {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    display: flex; flex-direction: column; flex-shrink: 0; max-height: 38%; overflow: hidden;
+  }
+  .cable-panel-wrap.collapsed .cable-panel-body { display: none; }
+  .cable-slim-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 8px; background: var(--raised); min-height: 30px; }
+  .cable-preview-bar { flex: 1; min-width: 0; font-size: 11px; line-height: 1.35; max-height: 44px; overflow-y: auto; }
+  .cable-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .cable-panel-body { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--border); }
+
+  table.som-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.som-table th {
+    position: sticky; top: 0; z-index: 2; background: var(--raised); color: var(--muted);
+    text-align: left; font-weight: 600; font-size: 11px; padding: 5px 8px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.som-table td { padding: 5px 8px; border-bottom: 1px solid rgba(120,145,180,0.14); white-space: nowrap; }
+  table.som-table tr { cursor: pointer; }
+  table.som-table tbody tr:hover { background: rgba(78,147,255,0.09); }
+  table.som-table tbody tr.sel { background: var(--selected); color: var(--fg); }
+  table.som-table tbody tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+
+  .cmd-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; flex-shrink: 0; padding: 2px; }
+  .cmd-group { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .inv-split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 8px; overflow: hidden; }
+  .inv-table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: auto; min-height: 0; }
+  .inv-detail-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .inv-detail-card h3 { margin: 0; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+  .photo-box { width: 100%; height: 92px; border-radius: 7px; border: 1px dashed var(--border); background: var(--input); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--muted); font-size: 11px; }
+  .kv-grid { display: grid; grid-template-columns: 88px 1fr; gap: 3px 8px; font-size: 11.5px; line-height: 1.4; }
+  .kv-grid span.k { color: var(--muted); }
+  .kv-grid span.v { color: var(--fg); font-weight: 500; word-break: break-word; }
+
+  .inv-flow-list { display: none; flex: 1; min-height: 0; overflow-y: auto; flex-direction: column; gap: 8px; padding: 2px; }
+  body.small-screen .inv-split { display: none; }
+  body.small-screen .inv-flow-list { display: flex; }
+  body.small-screen .hide-sm { display: none !important; }
+
+  .flow-room-group { display: flex; flex-direction: column; gap: 6px; }
+  .flow-room-header { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; padding: 3px 5px; display: flex; align-items: center; justify-content: space-between; }
+  .flow-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; }
+  .flow-card.expanded { border-color: var(--gold); box-shadow: 0 4px 14px rgba(0,0,0,0.28); }
+  .flow-card-top { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+  .flow-icon { width: 34px; height: 34px; border-radius: 8px; background: var(--raised); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .flow-main { flex: 1; min-width: 0; }
+  .flow-main strong { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .flow-main small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+  .flow-pills { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+  .mini-chip { font-size: 10px; padding: 2px 6px; border-radius: 5px; background: var(--raised); color: var(--fg); border: 1px solid var(--border); }
+  .mini-chip.warn { color: var(--danger-fg); background: var(--danger-bg); border-color: var(--danger-border); }
+  .mini-chip.rov { color: var(--rov); border-color: rgba(42,201,154,0.45); }
+  .flow-expanded-body { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .conn-hop { background: var(--raised); border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; cursor: pointer; }
+
+  .modal-backdrop { position: absolute; inset: 0; z-index: 50; background: rgba(4,8,16,0.74); display: none; align-items: center; justify-content: center; padding: 12px; }
+  .modal-backdrop.open { display: flex; }
+  .modal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 650px; max-height: 88%; display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(0,0,0,0.6); overflow: hidden; }
+  .modal-head { padding: 9px 12px; background: var(--raised); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .modal-head h3 { margin: 0; font-size: 13.5px; }
+  .modal-body { padding: 11px 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 9px; }
+  .modal-foot { padding: 7px 12px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; background: var(--raised); }
+
+  #toast {
+    position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
+    background: var(--raised); color: var(--fg); border: 1px solid var(--gold);
+    padding: 6px 13px; border-radius: 999px; font-size: 11.5px; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 80; white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis;
+  }
+  #toast.show { opacity: 1; }
+
+  @media (max-width: 820px) { .inv-split { grid-template-columns: 1fr; } }
+
+  @media (orientation: landscape) and (max-height: 540px) {
+    .som-slimbar { height: 31px; padding: 0 6px; }
+    .som-logo { width: 20px; height: 20px; font-size: 9px; border-radius: 5px; }
+    .tab-btn { padding: 2px 8px; font-size: 11px; }
+    .som-slimbar .btn.sm { min-height: 22px; padding: 1px 6px; font-size: 10.5px; }
+    .workspace { padding: 2px 3px; gap: 2px; }
+    .view-pane { gap: 2px; }
+    .FloatingLegend { top: 4px; left: 4px; padding: 2px 6px; font-size: 9.5px; gap: 5px; }
+    .FloatingZoom { bottom: 5px; right: 5px; padding: 2px; border-radius: 6px; }
+    .FloatingZoom .zbtn { height: 21px; min-width: 21px; font-size: 10px; padding: 0 5px; }
+    .FloatingZoom .zpct { font-size: 10px; min-width: 30px; }
+    body.landscape-idle .cable-panel-wrap.collapsed { display: none; }
+    body.landscape-idle .FloatingCablesBtn { display: inline-flex; }
+    .cable-slim-head { min-height: 25px; padding: 2px 6px; }
+    .cable-preview-bar { max-height: 20px; white-space: nowrap; overflow-x: auto; overflow-y: hidden; font-size: 10.5px; }
+    .cable-head-actions .btn.sm { min-height: 20px; padding: 1px 6px; font-size: 10px; }
+    .cable-panel-wrap:not(.collapsed) {
+      position: absolute; left: 4px; right: 4px; bottom: 4px;
+      max-height: calc(100% - 38px); height: 68%; z-index: 25; box-shadow: 0 -10px 30px rgba(0,0,0,0.55);
+    }
+    body.small-screen .flow-room-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    body.small-screen .flow-room-header, body.small-screen .flow-card.expanded { grid-column: 1 / -1; }
+    .cmd-row { padding: 1px; gap: 4px; }
+    select.inp, input.inp { min-height: 24px; padding: 2px 6px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div id="outerStage">
+  <div id="appShell">
+    <header class="som-slimbar">
+      <div class="slim-left">
+        <div class="som-logo" title="S.O.M. · Somente leitura">SOM</div>
+        <div class="tabs-inline">
+          <button class="tab-btn active" id="tabDiagramBtn" type="button">Diagrama</button>
+          <button class="tab-btn" id="tabVideoBtn" type="button">Fluxo de vídeos</button>
+          <button class="tab-btn" id="tabInventoryBtn" type="button">Inventário</button>
+        </div>
+        <span class="vessel-short" id="vesselLabelTop">S.O.M. QR Viewer</span>
+      </div>
+      <div class="slim-right">
+        <button class="btn sm locked-on" id="quickLockBtn" type="button" title="Travar ou liberar o arraste de blocos">🔒</button>
+        <button class="btn sm" id="drawerToggleBtn" type="button">▾ Opções</button>
+      </div>
+    </header>
+
+    <div class="controls-drawer" id="topControlsDrawer">
+      <div class="drawer-row">
+        <div class="drawer-group">
+          <button class="btn sm locked-on" id="lockToggleBtn" type="button">🔒 Blocos travados</button>
+          <button class="btn sm" id="resetLayoutBtn" type="button" style="display:none;">↺ Restaurar posições</button>
+          <button class="btn sm" id="smallScreenBtn" type="button">📱 Modo Tela Pequena</button>
+          <button class="btn sm" id="btnMatrixView" type="button">⇄ Crosspoint (Matriz/Mux)…</button>
+          <button class="btn sm" id="btnDvrChannels" type="button">🎥 Canais DVR…</button>
+          <button class="btn sm active-toggle" id="btnVideoLayoutMode" type="button" style="display:none;">Layout: Fluxo limpo</button>
+        </div>
+        <span class="badge readonly" id="pwaCacheBadge">Somente leitura</span>
+      </div>
+      <div class="drawer-divider"></div>
+      <div class="drawer-row">
+        <div class="drawer-group">
+          <label for="disciplineSelect" style="color:var(--muted);font-size:11.5px;">Disciplina:</label>
+          <select id="disciplineSelect" class="inp">
+            <option value="all">Todas as disciplinas</option>
+            <option value="video">Vídeo (SDI / HDMI)</option>
+            <option value="fiber">Fibra óptica / Umbilical</option>
+            <option value="network">Rede / Ethernet</option>
+            <option value="serial">Serial / NMEA / PPS</option>
+            <option value="acoustic">Acústica / Sensores</option>
+            <option value="power">Energia / Alimentação</option>
+          </select>
+          <label class="chk-label"><input type="checkbox" id="chkDiscColors" checked> Cores por disciplina</label>
+          <label class="chk-label"><input type="checkbox" id="chkBundles" checked> Agrupar feixes</label>
+          <label class="chk-label"><input type="checkbox" id="chkScreens"> Incluir telas</label>
+        </div>
+        <div class="drawer-group">
+          <button class="btn sm primary" id="btnImportBaseDrawer" type="button" title="Importar ou atualizar arquivo .json da embarcação para consulta em Modo Avião">📂 Carregar Base (.json)</button>
+          <input type="file" id="jsonBaseInput" accept=".json,application/json" style="display:none;">
+          <select id="themeSelect" class="inp" title="Tema visual do S.O.M.">
+            <option value="dark">Azul noturno</option>
+            <option value="ocean">Oceano profundo</option>
+            <option value="black">Preto OLED</option>
+            <option value="light">Claro diurno</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="qrBanner">
+      <span id="qrBannerText">Item focado via QR Code</span>
+      <div class="cmd-group">
+        <button class="btn sm" id="qrOpenFichaBtn" type="button">Ver no Inventário</button>
+        <button class="btn sm" id="qrDismissBtn" type="button">✕</button>
+      </div>
+    </div>
+
+    <!-- Cartão inicial exibido apenas na 1ª abertura do PWA vazio antes de importar a base .json -->
+    <div id="emptyPwaCard">
+      <div class="som-logo" style="width:48px;height:48px;font-size:16px;border-radius:12px;">SOM</div>
+      <h2 style="margin:0;font-size:17px;">Visualizador PWA Offline pronto neste aparelho</h2>
+      <p style="margin:0;max-width:440px;color:var(--muted);line-height:1.5;font-size:12.5px;">
+        O aplicativo já foi salvo na memória do seu navegador. Carregue abaixo o arquivo <b>Base JSON do Inventário</b> exportado pelo S.O.M. para consultar todo o Diagrama, Fluxo de vídeos e Inventário pelas etiquetas QR mesmo em <b>Modo Avião</b>.
+      </p>
+      <button class="btn primary" id="btnImportBaseWelcome" type="button" style="padding:8px 16px;font-size:13px;">📂 Selecionar Base do Navio (.json)</button>
+    </div>
+
+    <div class="workspace">
+      <section class="view-pane active" id="paneDiagram">
+        <div class="diagram-stage" id="diagramStage">
+          <svg id="diagramSvg" xmlns="http://www.w3.org/2000/svg">
+            <g id="viewportG">
+              <g id="hullLayer"></g>
+              <g id="roomsLayer"></g>
+              <g id="edgesLayer"></g>
+              <g id="nodesLayer"></g>
+            </g>
+          </svg>
+          <div class="FloatingLegend" id="discLegend"></div>
+          <button class="FloatingCablesBtn" id="btnFloatingCables" type="button">▴ Cabos</button>
+          <div class="FloatingZoom">
+            <button class="zbtn" id="btnZoomOut" type="button">−</button>
+            <span class="zpct" id="zoomBadge">100%</span>
+            <button class="zbtn" id="btnZoomIn" type="button">+</button>
+            <button class="zbtn" id="btnFit" type="button">Ajustar</button>
+          </div>
+        </div>
+
+        <div class="cable-panel-wrap collapsed" id="cablePanelWrap">
+          <div class="cable-slim-head">
+            <div class="cable-preview-bar" id="connectionPreview">Toque num equipamento ou cabo para rastrear a cadeia.</div>
+            <div class="cable-head-actions">
+              <button class="btn sm" id="btnPinout" type="button">Pinagem e histórico</button>
+              <button class="btn sm" id="btnClearSel" type="button" style="display:none;">Limpar seleção</button>
+              <button class="btn sm" id="btnToggleCablePanel" type="button">▴ Cabos</button>
+            </div>
+          </div>
+          <div class="cable-panel-body">
+            <table class="som-table" id="cableTable">
+              <thead>
+                <tr>
+                  <th>Cabo</th><th>Origem</th><th>Porta orig.</th><th>Destino</th><th>Porta dest.</th>
+                  <th class="hide-sm">Conector orig.</th><th class="hide-sm">Conector dest.</th><th>Protocolo</th><th class="hide-sm">Situação</th>
+                </tr>
+              </thead>
+              <tbody id="cableTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="view-pane" id="paneInventory">
+        <div class="cmd-row">
+          <div class="cmd-group" style="flex:1;">
+            <input id="invSearch" class="inp" style="flex:1;min-width:140px;" placeholder="Filtrar tag, tipo, série, sala ou IP…">
+            <select id="invRoomFilter" class="inp"><option value="all">Todos os espaços</option></select>
+          </div>
+        </div>
+        <div class="inv-split">
+          <div class="inv-table-card">
+            <table class="som-table">
+              <thead>
+                <tr><th>Nome / Tag</th><th>Tipo</th><th>Série</th><th>Canal 1</th><th>Localização a bordo</th><th>Situação</th><th>Falhas</th><th>Anexos</th></tr>
+              </thead>
+              <tbody id="invTbody"></tbody>
+            </table>
+          </div>
+          <aside class="inv-detail-card">
+            <h3><span>Detalhes técnicos</span><button class="btn sm primary" id="btnJumpDiagramDesktop" type="button">Ver no Diagrama</button></h3>
+            <div class="photo-box" id="detailPhotoBox">Sem foto</div>
+            <div class="kv-grid" id="detailKvGrid"></div>
+            <div class="cmd-group">
+              <button class="btn sm" id="btnModalPorts" type="button">Portas</button>
+              <button class="btn sm" id="btnModalCables" type="button">Cabos</button>
+              <button class="btn sm" id="btnModalFiles" type="button">Anexos</button>
+              <button class="btn sm" id="btnModalIps" type="button">IPs</button>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);font-weight:600;margin-top:2px;">Histórico de falhas</div>
+            <div style="border:1px solid var(--border);border-radius:7px;overflow:auto;max-height:145px;">
+              <table class="som-table"><thead><tr><th>Data</th><th>Descrição</th><th>Situação</th></tr></thead><tbody id="detailFailuresTbody"></tbody></table>
+            </div>
+          </aside>
+        </div>
+        <div class="inv-flow-list" id="invFlowList"></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="modalBackdrop">
+      <div class="modal-card">
+        <div class="modal-head"><h3 id="modalTitle">Detalhes</h3><button class="btn sm" id="modalCloseTop" type="button">✕</button></div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-foot"><button class="btn primary" id="modalCloseBtn" type="button">Fechar</button></div>
+      </div>
+    </div>
+    <div id="toast"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  let DATA = {"isPwaShell": true, "vesselName": "S.O.M. QR Viewer", "rooms": [], "equipment": [], "cables": [], "dvrChannels": [], "videoFlowCoords": {}, "videoCableIds": [], "videoStageBanners": [], "initialTarget": {}};
+  let VIDEO_FLOW_COORDS = DATA.videoFlowCoords || {};
+  let VIDEO_EQ_SET = new Set(Object.keys(VIDEO_FLOW_COORDS));
+  let VIDEO_CABLE_IDS = new Set(DATA.videoCableIds || []);
+  let VIDEO_STAGE_BANNERS_H = DATA.videoStageBanners || [];
+
+  // Registro do Service Worker PWA quando aberto em HTTPS / localhost
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+    navigator.serviceWorker.register("./sw.js").then(() => {
+      const b = document.getElementById("pwaCacheBadge");
+      if (b) b.textContent = "✓ PWA Offline ativo";
+    }).catch(() => {});
+  }
+
+  // Persistência IndexedDB + fallback localStorage para guardar a base completa do navio no celular
+  function saveDbSnapshot(payload) {
+    try { localStorage.setItem("som_qr_offline_snapshot", JSON.stringify(payload)); } catch (_) {}
+    try {
+      const req = indexedDB.open("som_qr_idb", 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore("store");
+      req.onsuccess = e => {
+        const tx = e.target.result.transaction("store", "readwrite");
+        tx.objectStore("store").put(payload, "vessel_data");
+      };
+    } catch (_) {}
+  }
+
+  function loadDbSnapshot() {
+    return new Promise(resolve => {
+      try {
+        const req = indexedDB.open("som_qr_idb", 1);
+        req.onupgradeneeded = e => e.target.result.createObjectStore("store");
+        req.onsuccess = e => {
+          const tx = e.target.result.transaction("store", "readonly");
+          const getReq = tx.objectStore("store").get("vessel_data");
+          getReq.onsuccess = () => {
+            if (getReq.result && getReq.result.equipment?.length) { resolve(getReq.result); return; }
+            try {
+              const ls = JSON.parse(localStorage.getItem("som_qr_offline_snapshot") || "null");
+              resolve(ls && ls.equipment?.length ? ls : null);
+            } catch (_) { resolve(null); }
+          };
+          getReq.onerror = () => resolve(null);
+        };
+        req.onerror = () => {
+          try {
+            const ls = JSON.parse(localStorage.getItem("som_qr_offline_snapshot") || "null");
+            resolve(ls && ls.equipment?.length ? ls : null);
+          } catch (_) { resolve(null); }
+        };
+      } catch (_) { resolve(null); }
+    });
+  }
+
+  // Descompacta #d=<base64url(deflate-raw)> localmente para visitantes que leram um QR sem ter a base salva
+  async function decodeHashToken(b64url) {
+    if (!b64url || typeof DecompressionStream === "undefined") return null;
+    try {
+      const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((b64url.length + 3) % 4);
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const ds = new DecompressionStream("deflate-raw");
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const text = await new Response(ds.readable).text();
+      return JSON.parse(text);
+    } catch (_) { return null; }
+  }
+
+  // Constrói um mini-diagrama instantâneo a partir dos dados compactados no #hash quando o celular não tem a base completa
+  function synthesizePayloadFromHashMini(mini) {
+    if (!mini) return null;
+    const vessel = mini.v || "S.O.M. (QR Direto)";
+    if (mini.k === "c") {
+      const [oid, oname, otype, oport] = mini.o || ["eq_o", "Origem", "Outro", "—"];
+      const [did, dname, dtype, dport] = mini.d || ["eq_d", "Destino", "Outro", "—"];
+      return {
+        isTemporaryHashView: true,
+        vesselName: vessel,
+        rooms: [{ id: "rm_qr", title: "Conexão lida do QR Code", isRov: false, tier: 2, bays: [], hx: 40, hy: 60, hw: 560, hh: 210, vx: 40, vy: 50, vw: 520, vh: 220 }],
+        equipment: [
+          { id: oid, name: oname, type: otype, model: "Lido via QR", serial: "", ip: "", room: "rm_qr", location: "fixed", roomLabel: vessel, statusLabel: "QR", hx: 70, hy: 120, vx: 60, vy: 110, ports: [{ name: oport, type: mini.p || "", notes: "" }], ips: [], files: [], failures: [] },
+          { id: did, name: dname, type: dtype, model: "Lido via QR", serial: "", ip: "", room: "rm_qr", location: "fixed", roomLabel: vessel, statusLabel: "QR", hx: 365, hy: 120, vx: 310, vy: 110, ports: [{ name: dport, type: mini.p || "", notes: "" }], ips: [], files: [], failures: [] }
+        ],
+        cables: [{ id: mini.id || "cab_qr", name: mini.n || "Cabo", origin: oid, origin_port: oport, dest: did, dest_port: dport, origin_connector: "—", dest_connector: "—", protocol: mini.p || "", cable_type: mini.p || "", discipline: "other", diagram: "equipment", status: "Confirmada", pinout: [], history: [] }],
+        dvrChannels: [], videoFlowCoords: {}, videoCableIds: [], videoStageBanners: []
+      };
+    }
+    const eqList = [{
+      id: mini.id || "eq_qr", name: mini.n || "Equipamento", type: mini.t || "Outro", model: mini.m || "—",
+      serial: mini.s || "", ip: mini.i || "", room: "rm_qr", location: "fixed",
+      roomLabel: mini.r || vessel, statusLabel: "Instalado", notes: "Ficha instantânea lida diretamente do QR Code (#hash).",
+      hx: 330, hy: 80 + Math.max(0, ((mini.c || []).length - 1) * 52), vx: 165, vy: 60,
+      ports: [], ips: mini.i ? [{ net: "Principal", ip: mini.i }] : [], files: [], failures: []
+    }];
+    const cabList = [];
+    (mini.c || []).forEach((row, idx) => {
+      const [isOrig, cname, myPort, peerName, peerType, peerPort, proto] = row;
+      const pid = "peer_" + idx;
+      eqList.push({
+        id: pid, name: peerName, type: peerType || "Outro", model: "Conectado", serial: "", ip: "", room: "rm_qr", location: "fixed",
+        roomLabel: mini.r || vessel, statusLabel: "Conectado", notes: "",
+        hx: isOrig ? 630 : 40, hy: 80 + idx * 108, vx: idx % 2 === 0 ? 45 : 295, vy: 205 + Math.floor(idx / 2) * 112,
+        ports: [], ips: [], files: [], failures: []
+      });
+      cabList.push({
+        id: "hc_" + idx, name: cname,
+        origin: isOrig ? eqList[0].id : pid, origin_port: isOrig ? myPort : peerPort,
+        dest: isOrig ? pid : eqList[0].id, dest_port: isOrig ? peerPort : myPort,
+        origin_connector: "—", dest_connector: "—", protocol: proto || "Sinal", cable_type: proto || "",
+        discipline: "video", diagram: "equipment", status: "Confirmada", pinout: [], history: []
+      });
+    });
+    const maxH = Math.max(220, 110 + (mini.c || []).length * 108);
+    return {
+      isTemporaryHashView: true,
+      vesselName: vessel,
+      rooms: [{ id: "rm_qr", title: mini.r || vessel, isRov: false, tier: 2, bays: [], hx: 20, hy: 30, hw: 835, hh: maxH, vx: 25, vy: 20, vw: 495, vh: 230 + Math.ceil((mini.c || []).length / 2) * 116 }],
+      equipment: eqList, cables: cabList, dvrChannels: [], videoFlowCoords: {}, videoCableIds: [], videoStageBanners: []
+    };
+  }
+
+  function applyLoadedPayload(newPayload, persist = false) {
+    DATA = newPayload;
+    VIDEO_FLOW_COORDS = DATA.videoFlowCoords || {};
+    VIDEO_EQ_SET = new Set(Object.keys(VIDEO_FLOW_COORDS));
+    VIDEO_CABLE_IDS = new Set(DATA.videoCableIds || []);
+    VIDEO_STAGE_BANNERS_H = DATA.videoStageBanners || [];
+    state.invSelectedId = DATA.equipment[0]?.id || null;
+    state.flowExpandedId = DATA.equipment[0]?.id || null;
+    document.getElementById("vesselLabelTop").textContent = DATA.vesselName || "S.O.M.";
+    document.title = `S.O.M. — ${DATA.vesselName || "QR"} · Inventário & Diagrama`;
+
+    const rf = document.getElementById("invRoomFilter");
+    rf.innerHTML = `<option value="all">Todos os espaços</option>`;
+    (DATA.rooms || []).forEach(r => { const opt = document.createElement("option"); opt.value = r.id; opt.textContent = r.title; rf.appendChild(opt); });
+
+    document.getElementById("emptyPwaCard").classList.toggle("show", !DATA.equipment?.length);
+    if (persist && DATA.equipment?.length && !DATA.isTemporaryHashView) saveDbSnapshot(DATA);
+    renderDiagram();
+    renderInventory();
+    fitDiagram();
+  }
+
+  const HIGHLIGHT_PALETTE = [
+    "#ffb703", "#38bdf8", "#f472b6", "#34d399", "#fb923c", "#a78bfa", "#a3e635", "#f87171",
+    "#2dd4bf", "#e879f9", "#fde047", "#60a5fa", "#fb7185", "#4ade80", "#fdba74", "#22d3ee"
+  ];
+  const DISCIPLINE_COLORS = {
+    video: "#38bdf8", fiber: "#c084fc", network: "#34d399", serial: "#fbbf24",
+    acoustic: "#2dd4bf", power: "#f87171", other: "#94a3b8"
+  };
+  const ICON_PATHS = {
+    "Monitor": '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4M7 21h10"/>',
+    "TV": '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="m8 1 4 4 4-4M6 22h12"/>',
+    "Adaptador": '<path d="M3 7h6v10H3zM15 9h6v6h-6zM9 12h6M1 10h2M1 14h2M21 12h2"/>',
+    "Splitter": '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M1 12h5M18 9h5M18 15h5M9 12h4m0 0 2-3m-2 3 2 3"/>',
+    "Conversor": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M1 12h2M21 12h2M7 9h10l-3-2M17 15H7l3 2"/>',
+    "Multiplexador óptico": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M1 12h2M21 12h2M7 9h10l-3-2M17 15H7l3 2"/>',
+    "Matriz de vídeo": '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20M8 9v11M15 9v11M2 14h20"/>',
+    "DVR": '<rect x="2" y="6" width="20" height="13" rx="2"/><circle cx="16" cy="12" r="2"/><path d="M5 15h4M5 9h3"/>',
+    "Computador": '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M7 21h10"/>',
+    "PC de overlay": '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M7 21h10"/>',
+    "Rack": '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 8h14M5 15h14M8 5h1M8 12h1M8 19h1"/>',
+    "Patch panel": '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 8h14M5 15h14M8 5h1M8 12h1M8 19h1"/>',
+    "Switch": '<rect x="2" y="8" width="20" height="12" rx="2"/><path d="M6 12v4M10 12v4M14 12v4M18 12v4M7 4h10"/>',
+    "Transponder acústico": '<path d="M9 3h6v17H9zM8 7H6M16 7h2M7 22h10M12 1v2"/><path d="M4 5Q1 9 4 13M20 5q3 4 0 8"/>',
+    "USBL": '<path d="M4 4h16v4H4zM12 8v13M7 20l5-5 5 5M3 12q9 9 18 0"/>',
+    "DVL": '<path d="M7 3h10v7H7zM8 10 3 21M16 10l5 11M12 10v11M3 16h18"/>',
+    "Câmera": '<rect x="3" y="6" width="15" height="14" rx="3"/><circle cx="10" cy="13" r="4"/><path d="m18 10 4-3v12l-4-3M7 6l2-3h6l2 3"/>',
+    "MRU": '<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M12 1v22M1 12h22M4 4l16 16"/>',
+    "GPS": '<path d="m7 2 4 4-4 4-4-4zm10 12 4 4-4 4-4-4zM8 8l8 8M16 3a7 7 0 0 1 5 5M14 6a3 3 0 0 1 4 4"/>',
+    "Multibeam": '<path d="M7 2h10v5H7zM12 7v3M3 21l9-11 9 11M7 21l5-11 5 11M12 10v11"/>',
+    "Sonar": '<circle cx="12" cy="12" r="9"/><path d="m12 12 6-7M12 12h7M12 12v7"/><circle cx="12" cy="12" r="3"/>',
+    "SBP": '<path d="M4 3h16v5H4zM7 8v4M12 8v4M17 8v4M2 17q5-5 10 0t10 0M2 22q5-5 10 0t10 0"/>',
+    "ROV": '<rect x="5" y="5" width="14" height="14" rx="4"/><circle cx="12" cy="12" r="4"/><path d="M1 8h4M19 8h4M1 16h4M19 16h4M8 1v4M16 1v4"/>',
+    "Sensor de pressão": '<circle cx="12" cy="10" r="8"/><path d="m12 10 4-4M8 18v4h8v-4"/>',
+    "INS": '<circle cx="12" cy="12" r="9"/><path d="m8 16 2-6 6-2-2 6Z"/>',
+    "Outro": '<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M19 9h4M1 15h4M19 15h4"/>'
+  };
+
+  const CARD_W = 198, CARD_H = 88, NS = "http://www.w3.org/2000/svg";
+  const isNarrowDevice = Math.min(window.innerWidth || 999, screen.width || 999) <= 760;
+
+  const state = {
+    activeTab: "diagram",
+    videoFlowMode: true,
+    drawerOpen: false,
+    locked: true,
+    smallScreen: isNarrowDevice,
+    discipline: "all",
+    colorByDisc: true,
+    bundleParallel: true,
+    includeScreens: false,
+    selectedEqId: null,
+    selectedCableIds: new Set(),
+    invSelectedId: DATA.equipment[0]?.id || null,
+    flowExpandedId: DATA.equipment[0]?.id || null,
+    cablePanelCollapsed: true,
+    customOffsets: {},
+    videoOffsets: {},
+    roomOffsets: {},
+    vp: { x: 24, y: 20, scale: 0.72 },
+    savedVps: {},
+    visualEdges: [],
+    highlightedColors: {}
+  };
+
+  const $ = sel => document.querySelector(sel);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+
+  function toast(msg) {
+    const el = $("#toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove("show"), 2500);
+  }
+
+  function eqById(id) { return DATA.equipment.find(e => e.id === id); }
+  function cableById(id) { return DATA.cables.find(c => c.id === id); }
+  function normPort(p) { return String(p || "").trim().toLowerCase().replace(/\s+/g, " "); }
+  function isVideoTab() { return state.activeTab === "video"; }
+  function activeNodeOffsets() { return (isVideoTab() && state.videoFlowMode) ? state.videoOffsets : state.customOffsets; }
+
+  function useVerticalDiagramLayout() {
+    if (!state.smallScreen) return false;
+    if (document.body.classList.contains("sim-phone-frame")) return true;
+    return window.innerHeight >= window.innerWidth;
+  }
+
+  function getRoomRect(r) {
+    const vert = useVerticalDiagramLayout();
+    const base = vert ? { x: r.vx, y: r.vy, w: r.vw, h: r.vh } : { x: r.hx, y: r.hy, w: r.hw, h: r.hh };
+    const off = state.roomOffsets[r.id] || { dx: 0, dy: 0 };
+    return { x: base.x + off.dx, y: base.y + off.dy, w: base.w, h: base.h };
+  }
+
+  function getEqRect(e) {
+    const vert = useVerticalDiagramLayout();
+    if (isVideoTab() && state.videoFlowMode && VIDEO_FLOW_COORDS[e.id]) {
+      const vf = VIDEO_FLOW_COORDS[e.id];
+      const pt = vert ? vf.v : vf.h;
+      const vOff = state.videoOffsets[e.id] || { dx: 0, dy: 0 };
+      return { x: pt[0] + vOff.dx, y: pt[1] + vOff.dy, w: CARD_W, h: CARD_H };
+    }
+    const base = vert ? { x: e.vx, y: e.vy } : { x: e.hx, y: e.hy };
+    const rOff = state.roomOffsets[e.room] || { dx: 0, dy: 0 };
+    const nOff = state.customOffsets[e.id] || { dx: 0, dy: 0 };
+    return { x: base.x + rOff.dx + nOff.dx, y: base.y + rOff.dy + nOff.dy, w: CARD_W, h: CARD_H };
+  }
+
+  function visibleEquipment() {
+    if (isVideoTab()) return DATA.equipment.filter(e => VIDEO_EQ_SET.has(e.id));
+    return DATA.equipment.filter(e => state.includeScreens || !e.isDisplay);
+  }
+
+  function visibleCables() {
+    const ids = new Set(visibleEquipment().map(e => e.id));
+    if (isVideoTab()) return DATA.cables.filter(c => VIDEO_CABLE_IDS.has(c.id) && ids.has(c.origin) && ids.has(c.dest));
+    return DATA.cables.filter(c => {
+      if (c.diagram === "video") return false;
+      if (!ids.has(c.origin) || !ids.has(c.dest)) return false;
+      if (state.discipline !== "all" && c.discipline !== state.discipline) return false;
+      return true;
+    });
+  }
+
+  function traceFullChain(startEqId, cables) {
+    const eqMap = Object.fromEntries(DATA.equipment.map(e => [e.id, e]));
+    const matched = new Set();
+    cables.forEach(c => { if (c.origin === startEqId || c.dest === startEqId) matched.add(c.id); });
+
+    const upQueue = [[startEqId, null]], upVis = new Set();
+    while (upQueue.length) {
+      const [nid, reqOutPort] = upQueue.shift();
+      const key = nid + "|" + (reqOutPort || "*");
+      if (upVis.has(key)) continue;
+      upVis.add(key);
+      const eq = eqMap[nid];
+      let allowedIn = null;
+      if (reqOutPort && eq?.internal_routes?.length) {
+        allowedIn = new Set(eq.internal_routes.filter(r => normPort(r.out_port) === normPort(reqOutPort)).map(r => normPort(r.in_port)));
+      }
+      cables.forEach(c => {
+        if (c.dest !== nid) return;
+        if (allowedIn && !allowedIn.has(normPort(c.dest_port))) return;
+        matched.add(c.id);
+        const prevEq = eqMap[c.origin];
+        if (prevEq?.internal_routes?.length || (prevEq?.isDisplay && normPort(c.origin_port).includes("loop"))) {
+          upQueue.push([c.origin, c.origin_port]);
+        }
+      });
+    }
+
+    const dnQueue = [[startEqId, null]], dnVis = new Set();
+    while (dnQueue.length) {
+      const [nid, reqInPort] = dnQueue.shift();
+      const key = nid + "|" + (reqInPort || "*");
+      if (dnVis.has(key)) continue;
+      dnVis.add(key);
+      const eq = eqMap[nid];
+      let allowedOut = null;
+      if (reqInPort && eq?.internal_routes?.length) {
+        allowedOut = new Set(eq.internal_routes.filter(r => normPort(r.in_port) === normPort(reqInPort)).map(r => normPort(r.out_port)));
+      }
+      cables.forEach(c => {
+        if (c.origin !== nid) return;
+        if (allowedOut && !allowedOut.has(normPort(c.origin_port))) return;
+        matched.add(c.id);
+        const nextEq = eqMap[c.dest];
+        if (nextEq?.internal_routes?.length || nextEq?.isDisplay) {
+          dnQueue.push([c.dest, c.dest_port]);
+        }
+      });
+    }
+    return matched;
+  }
+
+  function computeVisualEdges(cables) {
+    const groups = [];
+    if (state.bundleParallel) {
+      const map = new Map();
+      cables.forEach(c => {
+        const k = c.origin + "->" + c.dest;
+        if (!map.has(k)) map.set(k, []);
+        map.get(k).push(c);
+      });
+      map.forEach(arr => groups.push(arr));
+    } else {
+      cables.forEach(c => groups.push([c]));
+    }
+
+    const eqRects = {};
+    visibleEquipment().forEach(e => { eqRects[e.id] = getEqRect(e); });
+
+    const faceBuckets = {};
+    const prelim = groups.map((g, idx) => {
+      const c0 = g[0];
+      const s = eqRects[c0.origin], d = eqRects[c0.dest];
+      const dx = (d.x + d.w / 2) - (s.x + s.w / 2);
+      const dy = (d.y + d.h / 2) - (s.y + s.h / 2);
+      let sSide, dSide;
+      const sameColSkip = Math.abs(dx) < 40 && Math.abs(dy) > 135;
+      if (sameColSkip) { sSide = "right"; dSide = "right"; }
+      else if (useVerticalDiagramLayout() && Math.abs(dy) > 95) { sSide = dy > 0 ? "bottom" : "top"; dSide = dy > 0 ? "top" : "bottom"; }
+      else if (Math.abs(dx) >= 70) { sSide = dx >= 0 ? "right" : "left"; dSide = dx >= 0 ? "left" : "right"; }
+      else { sSide = dy >= 0 ? "bottom" : "top"; dSide = dy >= 0 ? "top" : "bottom"; }
+      const sk = c0.origin + ":" + sSide, dk = c0.dest + ":" + dSide;
+      (faceBuckets[sk] = faceBuckets[sk] || []).push({ idx, other: sSide === "left" || sSide === "right" ? d.y : d.x });
+      (faceBuckets[dk] = faceBuckets[dk] || []).push({ idx, other: dSide === "left" || dSide === "right" ? s.y : s.x });
+      return { g, idx, s, d, sSide, dSide, c0 };
+    });
+
+    const slotPos = {};
+    Object.entries(faceBuckets).forEach(([key, arr]) => {
+      arr.sort((a, b) => a.other - b.other || a.idx - b.idx);
+      arr.forEach((item, pos) => { slotPos[key + "#" + item.idx] = { pos, total: arr.length }; });
+    });
+
+    function anchorPoint(rect, side, slot) {
+      const pad = 16, ratio = (slot.pos + 1) / (slot.total + 1);
+      if (side === "right") return [rect.x + rect.w, rect.y + pad + (rect.h - 2 * pad) * ratio];
+      if (side === "left") return [rect.x, rect.y + pad + (rect.h - 2 * pad) * ratio];
+      if (side === "bottom") return [rect.x + pad + (rect.w - 2 * pad) * ratio, rect.y + rect.h];
+      return [rect.x + pad + (rect.w - 2 * pad) * ratio, rect.y];
+    }
+
+    return prelim.map((item, laneIdx) => {
+      const { g, idx, s, d, sSide, dSide, c0 } = item;
+      const sSlot = slotPos[c0.origin + ":" + sSide + "#" + idx] || { pos: 0, total: 1 };
+      const dSlot = slotPos[c0.dest + ":" + dSide + "#" + idx] || { pos: 0, total: 1 };
+      const [x1, y1] = anchorPoint(s, sSide, sSlot);
+      const [x2, y2] = anchorPoint(d, dSide, dSlot);
+      const laneOffset = ((laneIdx % 5) - 2) * 7;
+      let pts;
+      if (sSide === "right" && dSide === "right") {
+        const gutterX = Math.max(x1, x2) + 20 + ((laneIdx % 3) * 7);
+        pts = [[x1, y1], [gutterX, y1], [gutterX, y2], [x2, y2]];
+      } else if ((sSide === "right" && dSide === "left") || (sSide === "left" && dSide === "right")) {
+        const dir = sSide === "right" ? 1 : -1;
+        if ((x2 - x1) * dir > 26) {
+          const midX = (x1 + x2) / 2 + laneOffset;
+          pts = [[x1, y1], [midX, y1], [midX, y2], [x2, y2]];
+        } else {
+          const outX = x1 + dir * 24, inX = x2 - dir * 24, detourY = Math.min(s.y, d.y) - 24 - Math.abs(laneOffset);
+          pts = [[x1, y1], [outX, y1], [outX, detourY], [inX, detourY], [inX, y2], [x2, y2]];
+        }
+      } else {
+        const midY = (y1 + y2) / 2 + laneOffset;
+        pts = [[x1, y1], [x1, midY], [x2, midY], [x2, y2]];
+      }
+      const isBundle = g.length > 1;
+      const uniqProtos = Array.from(new Set(g.map(x => x.protocol).filter(Boolean)));
+      const midLabel = isBundle ? `${g.length}× ${uniqProtos.length === 1 ? uniqProtos[0] : "Cabos"}` : `${c0.origin_port} → ${c0.dest_port}`;
+      return {
+        id: "vedge_" + idx, cables: g, cableIds: new Set(g.map(c => c.id)), isBundle, pts, sSide, dSide,
+        midLabel, srcPort: isBundle ? `${g.length}×` : c0.origin_port, dstPort: isBundle ? `${g.length}×` : c0.dest_port,
+        baseColor: state.colorByDisc ? (DISCIPLINE_COLORS[c0.discipline] || "#94a3b8") : (c0.status === "Confirmada" ? "#2ac99a" : "#d99b38"),
+        allConfirmed: g.every(c => c.status === "Confirmada")
+      };
+    });
+  }
+
+  function roundedOrthoPath(pts) {
+    if (!pts.length) return "";
+    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const prev = pts[i - 1], cur = pts[i], next = pts[i + 1];
+      const v1x = cur[0] - prev[0], v1y = cur[1] - prev[1], v2x = next[0] - cur[0], v2y = next[1] - cur[1];
+      const len1 = Math.hypot(v1x, v1y), len2 = Math.hypot(v2x, v2y);
+      const r = Math.min(8, len1 / 2, len2 / 2);
+      if (r > 1.5) {
+        d += ` L ${(cur[0] - (v1x / len1) * r).toFixed(1)} ${(cur[1] - (v1y / len1) * r).toFixed(1)} Q ${cur[0].toFixed(1)} ${cur[1].toFixed(1)} ${(cur[0] + (v2x / len2) * r).toFixed(1)} ${(cur[1] + (v2y / len2) * r).toFixed(1)}`;
+      } else {
+        d += ` L ${cur[0].toFixed(1)} ${cur[1].toFixed(1)}`;
+      }
+    }
+    const last = pts[pts.length - 1];
+    return d + ` L ${last[0].toFixed(1)} ${last[1].toFixed(1)}`;
+  }
+
+  function applyViewportTransform() {
+    $("#viewportG").setAttribute("transform", `translate(${state.vp.x.toFixed(1)}, ${state.vp.y.toFixed(1)}) scale(${state.vp.scale.toFixed(4)})`);
+    $("#zoomBadge").textContent = `${Math.max(1, Math.round(state.vp.scale * 100))}%`;
+  }
+
+  function drawSvgPill(parent, cx, cy, text, bg, border, fg, fontSize = 10) {
+    if (!text) return;
+    const pw = text.length * (fontSize * 0.61) + 12, ph = fontSize + 7;
+    const r = document.createElementNS(NS, "rect");
+    r.setAttribute("x", (cx - pw / 2).toFixed(1)); r.setAttribute("y", (cy - ph / 2).toFixed(1));
+    r.setAttribute("width", pw.toFixed(1)); r.setAttribute("height", ph.toFixed(1));
+    r.setAttribute("rx", "4.5"); r.setAttribute("fill", bg); r.setAttribute("fill-opacity", "0.94");
+    r.setAttribute("stroke", border); r.setAttribute("stroke-width", "1");
+    parent.appendChild(r);
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", cx.toFixed(1)); t.setAttribute("y", (cy + fontSize * 0.34).toFixed(1));
+    t.setAttribute("text-anchor", "middle"); t.setAttribute("fill", fg);
+    t.setAttribute("font-size", String(fontSize)); t.setAttribute("font-weight", "600");
+    t.textContent = text; parent.appendChild(t);
+  }
+
+  function renderDiagram() {
+    const hullLayer = $("#hullLayer"), roomsLayer = $("#roomsLayer"), edgesLayer = $("#edgesLayer"), nodesLayer = $("#nodesLayer");
+    hullLayer.innerHTML = ""; roomsLayer.innerHTML = ""; edgesLayer.innerHTML = ""; nodesLayer.innerHTML = "";
+
+    const styles = getComputedStyle(document.documentElement);
+    const cSurface = styles.getPropertyValue("--surface").trim();
+    const cRaised = styles.getPropertyValue("--raised").trim();
+    const cBorder = styles.getPropertyValue("--border").trim();
+    const cFg = styles.getPropertyValue("--fg").trim();
+    const cMuted = styles.getPropertyValue("--muted").trim();
+    const cAccent = styles.getPropertyValue("--accent").trim();
+    const cSelected = styles.getPropertyValue("--selected").trim();
+    const cGold = styles.getPropertyValue("--gold").trim();
+
+    const drawShipRooms = !(isVideoTab() && state.videoFlowMode);
+    if (!drawShipRooms && !useVerticalDiagramLayout()) {
+      VIDEO_STAGE_BANNERS_H.forEach(st => {
+        const g = document.createElementNS(NS, "g");
+        const sr = document.createElementNS(NS, "rect");
+        sr.setAttribute("x", st.x); sr.setAttribute("y", st.y); sr.setAttribute("width", st.w); sr.setAttribute("height", st.h);
+        sr.setAttribute("rx", "14"); sr.setAttribute("fill", cRaised); sr.setAttribute("fill-opacity", "0.42");
+        sr.setAttribute("stroke", cBorder); sr.setAttribute("stroke-dasharray", "4 4");
+        g.appendChild(sr);
+        const stTxt = document.createElementNS(NS, "text");
+        stTxt.setAttribute("x", st.x + 12); stTxt.setAttribute("y", st.y + 20);
+        stTxt.setAttribute("fill", cMuted); stTxt.setAttribute("font-size", "11.5"); stTxt.setAttribute("font-weight", "600");
+        stTxt.textContent = st.title; g.appendChild(stTxt);
+        roomsLayer.appendChild(g);
+      });
+    }
+
+    let shipMinX = Infinity, shipMinY = Infinity, shipMaxX = -Infinity, shipMaxY = -Infinity;
+    (drawShipRooms ? DATA.rooms : []).forEach(r => {
+      const rect = getRoomRect(r);
+      if (!r.isRov) {
+        shipMinX = Math.min(shipMinX, rect.x); shipMinY = Math.min(shipMinY, rect.y);
+        shipMaxX = Math.max(shipMaxX, rect.x + rect.w); shipMaxY = Math.max(shipMaxY, rect.y + rect.h);
+      }
+      const rg = document.createElementNS(NS, "g");
+      rg.setAttribute("data-room-id", r.id);
+      rg.style.cursor = state.locked ? "grab" : "move";
+      const rr = document.createElementNS(NS, "rect");
+      rr.setAttribute("x", rect.x); rr.setAttribute("y", rect.y); rr.setAttribute("width", rect.w); rr.setAttribute("height", rect.h);
+      rr.setAttribute("rx", "16"); rr.setAttribute("fill", cRaised);
+      rr.setAttribute("stroke", r.isRov ? "#2ac99a" : cBorder); rr.setAttribute("stroke-width", r.isRov ? "2" : "1.2");
+      if (!r.isRov) rr.setAttribute("stroke-dasharray", "6 4");
+      rg.appendChild(rr);
+
+      const rt = document.createElementNS(NS, "text");
+      rt.setAttribute("x", rect.x + 16); rt.setAttribute("y", rect.y + 24);
+      rt.setAttribute("fill", r.isRov ? "#2ac99a" : cMuted); rt.setAttribute("font-size", "13"); rt.setAttribute("font-weight", "600");
+      rt.textContent = "▣  " + r.title; rg.appendChild(rt);
+
+      if (!useVerticalDiagramLayout() && r.bays) {
+        r.bays.forEach(bay => {
+          if (bay.screenBay && !state.includeScreens) return;
+          const br = document.createElementNS(NS, "rect");
+          br.setAttribute("x", rect.x + bay.x); br.setAttribute("y", rect.y + bay.y);
+          br.setAttribute("width", bay.w); br.setAttribute("height", bay.h);
+          br.setAttribute("rx", "8"); br.setAttribute("fill", styles.getPropertyValue("--bg").trim());
+          br.setAttribute("stroke", cBorder); br.setAttribute("stroke-dasharray", "2 3");
+          rg.appendChild(br);
+          const bt = document.createElementNS(NS, "text");
+          bt.setAttribute("x", rect.x + bay.x + 10); bt.setAttribute("y", rect.y + bay.y + 16);
+          bt.setAttribute("fill", cMuted); bt.setAttribute("font-size", "10.5"); bt.setAttribute("font-weight", "600");
+          bt.textContent = "▤ " + bay.title; rg.appendChild(bt);
+        });
+      }
+      roomsLayer.appendChild(rg);
+    });
+
+    if (isFinite(shipMinX)) {
+      const l = shipMinX - 28, t = shipMinY - 30, r = shipMaxX + 28, b = shipMaxY + 26;
+      const hull = document.createElementNS(NS, "path");
+      const dHull = useVerticalDiagramLayout()
+        ? `M ${l} ${b} L ${l} ${t} Q ${l} ${t - 38} ${(l + r) / 2} ${t - 68} Q ${r} ${t - 38} ${r} ${t} L ${r} ${b} Z`
+        : `M ${l} ${t} L ${r} ${t} Q ${r + 44} ${t} ${r + 84} ${(t + b) / 2} Q ${r + 44} ${b} ${r} ${b} L ${l} ${b} Z`;
+      hull.setAttribute("d", dHull); hull.setAttribute("fill", "none");
+      hull.setAttribute("stroke", cAccent); hull.setAttribute("stroke-width", "2"); hull.setAttribute("stroke-opacity", "0.75");
+      hullLayer.appendChild(hull);
+      const vt = document.createElementNS(NS, "text");
+      vt.setAttribute("x", l + 14); vt.setAttribute("y", t + 18); vt.setAttribute("fill", cAccent);
+      vt.setAttribute("font-size", "12.5"); vt.setAttribute("font-weight", "700"); vt.textContent = DATA.vesselName;
+      hullLayer.appendChild(vt);
+    }
+
+    const cables = visibleCables();
+    const vEdges = computeVisualEdges(cables);
+    state.visualEdges = vEdges;
+    const hasActiveHighlight = state.selectedCableIds.size > 0;
+    const matchedEdges = vEdges.filter(ve => { for (const cid of ve.cableIds) if (state.selectedCableIds.has(cid)) return true; return false; });
+
+    state.highlightedColors = {};
+    const edgeColorMap = {};
+    matchedEdges.forEach((ve, idx) => {
+      const col = HIGHLIGHT_PALETTE[idx % HIGHLIGHT_PALETTE.length];
+      edgeColorMap[ve.id] = col;
+      ve.cableIds.forEach(cid => { if (state.selectedCableIds.has(cid)) state.highlightedColors[cid] = col; });
+    });
+
+    vEdges.forEach(ve => {
+      const matched = Boolean(edgeColorMap[ve.id]);
+      const strokeColor = matched ? edgeColorMap[ve.id] : ve.baseColor;
+      const strokeW = matched ? (ve.isBundle ? 4.4 : 3.7) : (ve.isBundle ? 2.6 : 1.75);
+      const eg = document.createElementNS(NS, "g");
+      eg.setAttribute("data-edge-id", ve.id);
+      eg.style.cursor = "pointer";
+      eg.setAttribute("opacity", (matched || !hasActiveHighlight) ? "1" : "0.18");
+
+      const pathD = roundedOrthoPath(ve.pts);
+      const visPath = document.createElementNS(NS, "path");
+      visPath.setAttribute("d", pathD); visPath.setAttribute("fill", "none");
+      visPath.setAttribute("stroke", strokeColor); visPath.setAttribute("stroke-width", strokeW);
+      if (!ve.allConfirmed && !matched) visPath.setAttribute("stroke-dasharray", "6 4");
+      eg.appendChild(visPath);
+
+      const pEnd = ve.pts[ve.pts.length - 1], pPrev = ve.pts[ve.pts.length - 2];
+      const ang = Math.atan2(pEnd[1] - pPrev[1], pEnd[0] - pPrev[0]) * 180 / Math.PI;
+      const arrow = document.createElementNS(NS, "polygon");
+      arrow.setAttribute("points", "0,0 -9,-4.5 -9,4.5"); arrow.setAttribute("fill", strokeColor);
+      arrow.setAttribute("transform", `translate(${pEnd[0].toFixed(1)},${pEnd[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
+      eg.appendChild(arrow);
+
+      const hitPath = document.createElementNS(NS, "path");
+      hitPath.setAttribute("d", pathD); hitPath.setAttribute("fill", "none");
+      hitPath.setAttribute("stroke", "transparent"); hitPath.setAttribute("stroke-width", "16");
+      eg.appendChild(hitPath);
+
+      if (ve.isBundle || matched) {
+        let bestLen = -1, mid = null;
+        for (let i = 0; i < ve.pts.length - 1; i++) {
+          const segLen = Math.hypot(ve.pts[i + 1][0] - ve.pts[i][0], ve.pts[i + 1][1] - ve.pts[i][1]);
+          if (segLen > bestLen) { bestLen = segLen; mid = [(ve.pts[i][0] + ve.pts[i + 1][0]) / 2, (ve.pts[i][1] + ve.pts[i + 1][1]) / 2]; }
+        }
+        if (mid && bestLen >= 42) drawSvgPill(eg, mid[0], mid[1], ve.midLabel, cSurface, strokeColor, matched ? strokeColor : cFg);
+      }
+      if (matched) {
+        const p0 = ve.pts[0];
+        drawSvgPill(eg, p0[0] + (ve.sSide === "right" ? 28 : ve.sSide === "left" ? -28 : 0), p0[1] + (ve.sSide === "bottom" ? 13 : ve.sSide === "top" ? -13 : -11), ve.srcPort, cSurface, strokeColor, strokeColor, 9.5);
+        drawSvgPill(eg, pEnd[0] + (ve.dSide === "right" ? 28 : ve.dSide === "left" ? -28 : 0), pEnd[1] + (ve.dSide === "bottom" ? 13 : ve.dSide === "top" ? -13 : 11), ve.dstPort, cSurface, strokeColor, strokeColor, 9.5);
+      }
+      eg.addEventListener("click", ev => { ev.stopPropagation(); onEdgeClicked(ve); });
+      eg.addEventListener("dblclick", ev => { ev.stopPropagation(); openPinoutModal(ve.cables[0]); });
+      edgesLayer.appendChild(eg);
+    });
+
+    visibleEquipment().forEach(eq => {
+      const rect = getEqRect(eq);
+      const isSel = state.selectedEqId === eq.id;
+      const borderCol = isSel ? cGold : (eq.location === "rov" ? "#2ac99a" : cAccent);
+      const iconCol = eq.location === "rov" ? "#2ac99a" : cAccent;
+
+      const ng = document.createElementNS(NS, "g");
+      ng.setAttribute("data-eq-id", eq.id);
+      ng.setAttribute("transform", `translate(${rect.x.toFixed(1)}, ${rect.y.toFixed(1)})`);
+      ng.style.cursor = state.locked ? "pointer" : "grab";
+
+      const cardRect = document.createElementNS(NS, "rect");
+      cardRect.setAttribute("width", CARD_W); cardRect.setAttribute("height", CARD_H); cardRect.setAttribute("rx", "12");
+      cardRect.setAttribute("fill", isSel ? cSelected : cSurface);
+      cardRect.setAttribute("stroke", borderCol); cardRect.setAttribute("stroke-width", isSel ? "2.4" : "1.45");
+      ng.appendChild(cardRect);
+
+      const iconSvg = document.createElementNS(NS, "svg");
+      iconSvg.setAttribute("x", "11"); iconSvg.setAttribute("y", "12"); iconSvg.setAttribute("width", "24"); iconSvg.setAttribute("height", "24"); iconSvg.setAttribute("viewBox", "0 0 24 24");
+      iconSvg.innerHTML = `<g fill="none" stroke="${iconCol}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[eq.type] || ICON_PATHS["Outro"]}</g>`;
+      ng.appendChild(iconSvg);
+
+      const tKind = document.createElementNS(NS, "text");
+      tKind.setAttribute("x", "42"); tKind.setAttribute("y", "21"); tKind.setAttribute("fill", cMuted); tKind.setAttribute("font-size", "10.5");
+      tKind.textContent = eq.type.length > 24 ? eq.type.slice(0, 23) + "…" : eq.type; ng.appendChild(tKind);
+
+      const tName = document.createElementNS(NS, "text");
+      tName.setAttribute("x", "42"); tName.setAttribute("y", "40"); tName.setAttribute("fill", cFg); tName.setAttribute("font-size", "12.5"); tName.setAttribute("font-weight", "600");
+      tName.textContent = eq.name.length > 20 ? eq.name.slice(0, 19) + "…" : eq.name; ng.appendChild(tName);
+
+      const hasRoutes = eq.internal_routes && eq.internal_routes.length > 0;
+      const isDvrCard = eq.type === "DVR";
+      const subTxt = hasRoutes ? `⇄ ${eq.internal_routes.length} patch(es)` : (isDvrCard && isVideoTab() ? "🎥 Canais DVR (toque)" : (eq.ip || eq.channel_main || ""));
+      if (subTxt) {
+        const tSub = document.createElementNS(NS, "text");
+        tSub.setAttribute("x", "12"); tSub.setAttribute("y", "73");
+        tSub.setAttribute("fill", (hasRoutes || (isDvrCard && isVideoTab())) ? "#2ac99a" : cMuted);
+        tSub.setAttribute("font-size", "10.5");
+        if (hasRoutes || isDvrCard) {
+          tSub.setAttribute("font-weight", "600"); tSub.style.cursor = "pointer";
+          tSub.addEventListener("click", ev => { ev.stopPropagation(); if (isDvrCard) openDvrChannelsModal(); else openCrosspointModal(eq); });
+        }
+        tSub.textContent = subTxt; ng.appendChild(tSub);
+      }
+
+      if ((eq.failures || []).some(f => f.status === "Aberta")) {
+        const dot = document.createElementNS(NS, "circle");
+        dot.setAttribute("cx", CARD_W - 13); dot.setAttribute("cy", "14"); dot.setAttribute("r", "4.5"); dot.setAttribute("fill", "#ff5c77");
+        ng.appendChild(dot);
+      }
+      ng.addEventListener("dblclick", ev => { ev.stopPropagation(); if (hasRoutes) openCrosspointModal(eq); });
+      nodesLayer.appendChild(ng);
+    });
+
+    $("#btnClearSel").style.display = hasActiveHighlight ? "inline-flex" : "none";
+    document.body.classList.toggle("landscape-idle", !hasActiveHighlight && state.cablePanelCollapsed);
+    applyViewportTransform();
+    renderCableTable(cables);
+  }
+
+  function updateCableToggleText(cablesCount) {
+    const n = cablesCount ?? visibleCables().length;
+    const selN = state.selectedCableIds.size;
+    const countTxt = selN ? `${selN}/${n}` : `${n}`;
+    $("#btnToggleCablePanel").textContent = state.cablePanelCollapsed ? `▴ Cabos (${countTxt})` : "Minimizar tabela de cabos";
+    const fBtn = $("#btnFloatingCables");
+    if (fBtn) fBtn.textContent = `▴ Cabos (${countTxt})`;
+  }
+
+  function selectEquipmentOnDiagram(eq) {
+    if (state.selectedEqId === eq.id) { clearDiagramSelection(); return; }
+    state.selectedEqId = eq.id; state.invSelectedId = eq.id; state.flowExpandedId = eq.id;
+    const cables = visibleCables();
+    const chainIds = traceFullChain(eq.id, cables);
+    state.selectedCableIds = chainIds;
+    renderDiagram(); renderInventory();
+    const lines = cables.filter(c => chainIds.has(c.id)).map(c => {
+      const col = state.highlightedColors[c.id] || "#ffb703";
+      return `<span style="color:${col};">●</span> ${esc(eqById(c.origin)?.name)} → ${esc(eqById(c.dest)?.name)} · <b>${esc(c.name)}</b> (${esc(c.origin_port)} → ${esc(c.dest_port)})`;
+    });
+    $("#connectionPreview").innerHTML = `<b>${esc(eq.name)}</b>: ` + (lines.length ? lines.join(" &nbsp;|&nbsp; ") : "Sem cabos nesta vista.");
+  }
+
+  function onEdgeClicked(ve) {
+    state.selectedEqId = null; state.selectedCableIds = new Set(ve.cableIds); renderDiagram();
+    const col = state.highlightedColors[ve.cables[0].id] || "#ffb703";
+    $("#connectionPreview").innerHTML = ve.cables.map(c => `<span style="color:${col};">●</span> ${esc(eqById(c.origin)?.name)} → ${esc(eqById(c.dest)?.name)} · <b>${esc(c.name)}</b> · portas ${esc(c.origin_port)} → ${esc(c.dest_port)}`).join(" &nbsp;|&nbsp; ");
+  }
+
+  function clearDiagramSelection() {
+    state.selectedEqId = null; state.selectedCableIds.clear();
+    $("#connectionPreview").textContent = "Toque num equipamento ou cabo para rastrear a cadeia.";
+    renderDiagram();
+  }
+
+  function renderCableTable(cables) {
+    const tbody = $("#cableTbody");
+    tbody.innerHTML = cables.map(c => {
+      const isSel = state.selectedCableIds.has(c.id);
+      const dotCol = state.highlightedColors[c.id];
+      return `<tr data-cid="${c.id}" class="${isSel ? "sel" : ""}">
+        <td>${dotCol ? `<span style="color:${dotCol};margin-right:4px;">●</span>` : ""}<b>${esc(c.name)}</b></td>
+        <td>${esc(eqById(c.origin)?.name || "—")}</td><td>${esc(c.origin_port)}</td>
+        <td>${esc(eqById(c.dest)?.name || "—")}</td><td>${esc(c.dest_port)}</td>
+        <td class="hide-sm">${esc(c.origin_connector)}</td><td class="hide-sm">${esc(c.dest_connector)}</td>
+        <td>${esc(c.protocol)}</td><td class="hide-sm">${esc(c.status)}</td>
+      </tr>`;
+    }).join("");
+    updateCableToggleText(cables.length);
+    tbody.querySelectorAll("tr[data-cid]").forEach(tr => {
+      tr.addEventListener("click", () => {
+        const c = cableById(tr.dataset.cid); if (!c) return;
+        state.selectedEqId = null; state.selectedCableIds = new Set([c.id]); renderDiagram();
+        $("#connectionPreview").innerHTML = `<span style="color:#ffb703;">●</span> <b>${esc(c.name)}</b> · ${esc(eqById(c.origin)?.name)} [${esc(c.origin_port)}] → ${esc(eqById(c.dest)?.name)} [${esc(c.dest_port)}]`;
+      });
+      tr.addEventListener("dblclick", () => { const c = cableById(tr.dataset.cid); if (c) openPinoutModal(c); });
+    });
+  }
+
+  function fitDiagram(focusEqId = null) {
+    const stage = $("#diagramStage");
+    const sw = stage.clientWidth || 800, sh = stage.clientHeight || 500;
+    if (focusEqId) {
+      const eq = eqById(focusEqId);
+      if (eq) {
+        const r = getEqRect(eq);
+        const targetScale = state.smallScreen ? 0.88 : 1.02;
+        state.vp.scale = targetScale;
+        state.vp.x = sw / 2 - (r.x + r.w / 2) * targetScale;
+        state.vp.y = sh / 2 - (r.y + r.h / 2) * targetScale;
+        applyViewportTransform(); return;
+      }
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    if ((isVideoTab() && state.videoFlowMode) || !DATA.rooms.length) {
+      visibleEquipment().forEach(eq => {
+        const er = getEqRect(eq);
+        minX = Math.min(minX, er.x - 28); minY = Math.min(minY, er.y - 44);
+        maxX = Math.max(maxX, er.x + er.w + 28); maxY = Math.max(maxY, er.y + er.h + 28);
+      });
+    } else {
+      DATA.rooms.forEach(r => {
+        const rr = getRoomRect(r);
+        minX = Math.min(minX, rr.x - 32); minY = Math.min(minY, rr.y - 46);
+        maxX = Math.max(maxX, rr.x + rr.w + (useVerticalDiagramLayout() ? 32 : 88));
+        maxY = Math.max(maxY, rr.y + rr.h + 32);
+      });
+    }
+    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 400; maxY = 300; }
+    const isShortLandscape = window.innerWidth > window.innerHeight && window.innerHeight <= 540;
+    const padX = isShortLandscape ? 10 : 18, padY = isShortLandscape ? 10 : 24;
+    const bw = Math.max(200, maxX - minX), bh = Math.max(200, maxY - minY);
+    const scale = Math.max(0.16, Math.min(1.5, Math.min((sw - padX) / bw, (sh - padY) / bh)));
+    state.vp.scale = scale;
+    state.vp.x = (sw - bw * scale) / 2 - minX * scale;
+    state.vp.y = (sh - bh * scale) / 2 - minY * scale;
+    applyViewportTransform();
+  }
+
+  function zoomAroundPoint(factor, cx, cy) {
+    const oldScale = state.vp.scale, newScale = Math.max(0.14, Math.min(3.2, oldScale * factor)), ratio = newScale / oldScale;
+    state.vp.x = cx - (cx - state.vp.x) * ratio;
+    state.vp.y = cy - (cy - state.vp.y) * ratio;
+    state.vp.scale = newScale;
+    applyViewportTransform();
+  }
+
+  function setupDiagramInteractions() {
+    const svg = $("#diagramSvg"), activePointers = new Map();
+    let dragCtx = null, lastPinchDist = null;
+
+    svg.addEventListener("wheel", ev => { ev.preventDefault(); zoomAroundPoint(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.offsetX, ev.offsetY); }, { passive: false });
+    svg.addEventListener("pointerdown", ev => {
+      if (ev.button !== 0 && ev.pointerType === "mouse") return;
+      if (state.drawerOpen) setDrawerOpen(false);
+      activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (activePointers.size === 2) {
+        const pts = Array.from(activePointers.values());
+        lastPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y); dragCtx = null; return;
+      }
+      if (ev.target.closest("[data-edge-id]")) return;
+      const eqEl = ev.target.closest("[data-eq-id]"), roomEl = ev.target.closest("[data-room-id]");
+      if (eqEl) {
+        const eqId = eqEl.getAttribute("data-eq-id"), curOff = activeNodeOffsets()[eqId] || { dx: 0, dy: 0 };
+        dragCtx = { kind: state.locked ? "tap_or_pan_eq" : "move_eq", eqId, startX: ev.clientX, startY: ev.clientY, origVpX: state.vp.x, origVpY: state.vp.y, origDx: curOff.dx, origDy: curOff.dy, moved: false };
+      } else if (roomEl && !state.locked) {
+        const roomId = roomEl.getAttribute("data-room-id"), curOff = state.roomOffsets[roomId] || { dx: 0, dy: 0 };
+        dragCtx = { kind: "move_room", roomId, startX: ev.clientX, startY: ev.clientY, origDx: curOff.dx, origDy: curOff.dy, moved: false };
+      } else {
+        dragCtx = { kind: "pan", startX: ev.clientX, startY: ev.clientY, origVpX: state.vp.x, origVpY: state.vp.y, moved: false };
+        svg.classList.add("panning");
+      }
+      svg.setPointerCapture(ev.pointerId);
+    });
+
+    svg.addEventListener("pointermove", ev => {
+      if (activePointers.has(ev.pointerId)) activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (activePointers.size === 2) {
+        const pts = Array.from(activePointers.values()), dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        if (lastPinchDist && lastPinchDist > 10) {
+          const rect = svg.getBoundingClientRect();
+          zoomAroundPoint(dist / lastPinchDist, (pts[0].x + pts[1].x) / 2 - rect.left, (pts[0].y + pts[1].y) / 2 - rect.top);
+        }
+        lastPinchDist = dist; return;
+      }
+      if (!dragCtx) return;
+      const dxScreen = ev.clientX - dragCtx.startX, dyScreen = ev.clientY - dragCtx.startY;
+      if (Math.hypot(dxScreen, dyScreen) > 5) dragCtx.moved = true;
+      if (!dragCtx.moved) return;
+      if (dragCtx.kind === "pan" || dragCtx.kind === "tap_or_pan_eq") {
+        state.vp.x = dragCtx.origVpX + dxScreen; state.vp.y = dragCtx.origVpY + dyScreen; applyViewportTransform();
+      } else if (dragCtx.kind === "move_eq") {
+        activeNodeOffsets()[dragCtx.eqId] = { dx: dragCtx.origDx + dxScreen / state.vp.scale, dy: dragCtx.origDy + dyScreen / state.vp.scale };
+        $("#resetLayoutBtn").style.display = "inline-flex"; renderDiagram();
+      } else if (dragCtx.kind === "move_room") {
+        state.roomOffsets[dragCtx.roomId] = { dx: dragCtx.origDx + dxScreen / state.vp.scale, dy: dragCtx.origDy + dyScreen / state.vp.scale };
+        $("#resetLayoutBtn").style.display = "inline-flex"; renderDiagram();
+      }
+    });
+
+    const finishPointer = ev => {
+      activePointers.delete(ev.pointerId);
+      if (activePointers.size < 2) lastPinchDist = null;
+      svg.classList.remove("panning");
+      if (!dragCtx) return;
+      const ctx = dragCtx; dragCtx = null;
+      if (!ctx.moved) {
+        if (ctx.kind === "tap_or_pan_eq" || ctx.kind === "move_eq") { const eq = eqById(ctx.eqId); if (eq) selectEquipmentOnDiagram(eq); }
+        else if (ctx.kind === "pan") clearDiagramSelection();
+      }
+    };
+    svg.addEventListener("pointerup", finishPointer);
+    svg.addEventListener("pointercancel", finishPointer);
+  }
+
+  function renderInventory() {
+    const q = ($("#invSearch").value || "").trim().toLowerCase(), roomFilter = $("#invRoomFilter").value;
+    const filtered = DATA.equipment.filter(e => {
+      if (roomFilter !== "all" && e.room !== roomFilter) return false;
+      if (!q) return true;
+      return `${e.name} ${e.type} ${e.model} ${e.serial} ${e.channel_main} ${e.ip} ${e.roomLabel} ${e.notes}`.toLowerCase().includes(q);
+    });
+
+    const invTbody = $("#invTbody");
+    invTbody.innerHTML = filtered.map(e => {
+      const iconCol = e.location === "rov" ? "#2ac99a" : "#4e93ff";
+      const miniSvg = `<svg width="16" height="16" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:5px;"><g fill="none" stroke="${iconCol}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[e.type] || ICON_PATHS["Outro"]}</g></svg>`;
+      return `<tr data-eqrow="${e.id}" class="${e.id === state.invSelectedId ? "sel" : ""}">
+        <td><b>${esc(e.name)}</b></td><td>${miniSvg}${esc(e.type)}</td><td>${esc(e.serial || "—")}</td>
+        <td>${esc(e.channel_main || "—")}</td><td>${esc(e.roomLabel)}</td><td>${esc(e.statusLabel)}</td>
+        <td>${(e.failures || []).length}</td><td>${(e.files || []).length}</td>
+      </tr>`;
+    }).join("");
+    invTbody.querySelectorAll("tr[data-eqrow]").forEach(tr => {
+      tr.addEventListener("click", () => { state.invSelectedId = tr.dataset.eqrow; renderInventory(); });
+      tr.addEventListener("dblclick", () => jumpToEquipmentOnDiagram(tr.dataset.eqrow));
+    });
+
+    const curEq = eqById(state.invSelectedId) || filtered[0];
+    if (curEq) {
+      const iconCol = curEq.location === "rov" ? "#2ac99a" : "#4e93ff";
+      $("#detailPhotoBox").innerHTML = `<svg width="38" height="38" viewBox="0 0 24 24"><g fill="none" stroke="${iconCol}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[curEq.type] || ICON_PATHS["Outro"]}</g></svg><span><b>${esc(curEq.name)}</b> · ${esc(curEq.model)}</span>`;
+      $("#detailKvGrid").innerHTML = [["Nome / Tag", curEq.name], ["Tipo", curEq.type], ["Modelo", curEq.model], ["Série", curEq.serial || "—"], ["IP", curEq.ip || "—"], ["Firmware", curEq.firmware || "—"], ["Localização", curEq.roomLabel], ["Observações", curEq.notes || "—"]].map(([k, v]) => `<span class="k">${esc(k)}:</span><span class="v">${esc(v)}</span>`).join("");
+      const fails = curEq.failures || [];
+      $("#detailFailuresTbody").innerHTML = fails.length ? fails.map(f => `<tr><td>${esc(f.date)}</td><td style="white-space:normal;">${esc(f.desc)}</td><td>${esc(f.status)}</td></tr>`).join("") : `<tr><td colspan="3" style="color:var(--muted);text-align:center;">Nenhuma falha registrada</td></tr>`;
+    }
+
+    const container = $("#invFlowList");
+    if (!filtered.length) { container.innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);">Nenhum equipamento encontrado.</div>`; return; }
+    const byRoom = new Map();
+    DATA.rooms.forEach(r => byRoom.set(r.id, { room: r, items: [] }));
+    filtered.forEach(e => {
+      if (!byRoom.has(e.room)) byRoom.set(e.room, { room: { id: e.room, title: e.roomLabel }, items: [] });
+      byRoom.get(e.room).items.push(e);
+    });
+    let html = "";
+    byRoom.forEach(({ room, items }) => {
+      if (!items.length) return;
+      html += `<div class="flow-room-group"><div class="flow-room-header"><span>▣ ${esc(room.title)}</span><span>${items.length} item(ns)</span></div>`;
+      items.forEach(eq => {
+        const expanded = state.flowExpandedId === eq.id, iconCol = eq.location === "rov" ? "#2ac99a" : "#4e93ff";
+        const linkedCables = DATA.cables.filter(c => c.origin === eq.id || c.dest === eq.id);
+        const openFails = (eq.failures || []).filter(f => f.status === "Aberta").length;
+        let expandedHtml = "";
+        if (expanded) {
+          const hopsHtml = linkedCables.map(c => {
+            const isOrig = c.origin === eq.id, otherEq = eqById(isOrig ? c.dest : c.origin);
+            return `<div class="conn-hop" data-hop-eq="${otherEq ? otherEq.id : ""}">
+              <div><b>${esc(isOrig ? c.origin_port : c.dest_port)}</b> ${isOrig ? "→" : "←"} <b>${esc(otherEq ? otherEq.name : "—")}</b> [${esc(isOrig ? c.dest_port : c.origin_port)}]
+              <div style="color:var(--muted);font-size:10px;">Cabo ${esc(c.name)} · ${esc(c.protocol)}</div></div><span class="badge">Ir p/ ponta</span></div>`;
+          }).join("");
+          expandedHtml = `<div class="flow-expanded-body">
+            <div class="kv-grid">
+              <span class="k">Modelo:</span><span class="v">${esc(eq.model)}</span><span class="k">Nº de Série:</span><span class="v">${esc(eq.serial || "—")}</span>
+              <span class="k">IP / Rede:</span><span class="v">${esc(eq.ip || "Sem IP")}</span><span class="k">Local:</span><span class="v">${esc(eq.roomLabel)}</span>
+              <span class="k">Notas:</span><span class="v">${esc(eq.notes || "—")}</span>
+            </div>
+            <div class="cmd-group">
+              <button class="btn sm primary" data-act-diagram="${eq.id}" type="button">🎯 Rastrear no Diagrama</button>
+              ${VIDEO_EQ_SET.has(eq.id) ? `<button class="btn sm" data-act-video="${eq.id}" type="button">🎬 Fluxo de vídeos</button>` : ""}
+              ${eq.internal_routes?.length ? `<button class="btn sm" data-act-mtx="${eq.id}" type="button">⇄ Crosspoint (${eq.internal_routes.length})</button>` : ""}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;">${hopsHtml || '<span style="color:var(--muted);">Sem cabos cadastrados.</span>'}</div>
+          </div>`;
+        }
+        html += `<div class="flow-card ${expanded ? "expanded" : ""}" id="flowCard_${eq.id}">
+          <div class="flow-card-top" data-toggle-flow="${eq.id}">
+            <div class="flow-icon"><svg width="20" height="20" viewBox="0 0 24 24"><g fill="none" stroke="${iconCol}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[eq.type] || ICON_PATHS["Outro"]}</g></svg></div>
+            <div class="flow-main"><strong>${esc(eq.name)} <span style="font-weight:400;color:var(--muted);">· ${esc(eq.type)}</span></strong><small>${esc(eq.model)} · Série ${esc(eq.serial || "—")}</small></div>
+            <span style="color:var(--muted);font-size:12px;">${expanded ? "▴" : "▾"}</span>
+          </div>
+          <div class="flow-pills">
+            ${eq.ip ? `<span class="mini-chip">IP ${esc(eq.ip)}</span>` : ""}
+            <span class="mini-chip">${linkedCables.length} cabo(s)</span>
+            ${eq.location === "rov" ? `<span class="mini-chip rov">Subsea ROV</span>` : ""}
+            ${openFails ? `<span class="mini-chip warn">${openFails} falha aberta</span>` : ""}
+          </div>${expandedHtml}</div>`;
+      });
+      html += `</div>`;
+    });
+    container.innerHTML = html;
+    container.querySelectorAll("[data-toggle-flow]").forEach(el => el.addEventListener("click", () => {
+      const id = el.getAttribute("data-toggle-flow");
+      state.flowExpandedId = state.flowExpandedId === id ? null : id; state.invSelectedId = id; renderInventory();
+    }));
+    container.querySelectorAll("[data-hop-eq]").forEach(el => el.addEventListener("click", () => {
+      const targetId = el.getAttribute("data-hop-eq"); if (!targetId) return;
+      state.flowExpandedId = targetId; state.invSelectedId = targetId; $("#invRoomFilter").value = "all"; $("#invSearch").value = ""; renderInventory();
+      document.getElementById("flowCard_" + targetId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }));
+    container.querySelectorAll("[data-act-diagram]").forEach(b => b.addEventListener("click", () => jumpToEquipmentOnDiagram(b.getAttribute("data-act-diagram"), "diagram")));
+    container.querySelectorAll("[data-act-video]").forEach(b => b.addEventListener("click", () => jumpToEquipmentOnDiagram(b.getAttribute("data-act-video"), "video")));
+    container.querySelectorAll("[data-act-mtx]").forEach(b => b.addEventListener("click", () => openCrosspointModal(eqById(b.getAttribute("data-act-mtx")))));
+  }
+
+  function jumpToEquipmentOnDiagram(eqId, targetTab = "diagram") {
+    const eq = eqById(eqId); if (!eq) return;
+    if (eq.isDisplay && !state.includeScreens) { state.includeScreens = true; $("#chkScreens").checked = true; }
+    state.discipline = "all"; $("#disciplineSelect").value = "all";
+    setDrawerOpen(false); switchTab(targetTab);
+    state.selectedEqId = null; selectEquipmentOnDiagram(eq); fitDiagram(eq.id);
+  }
+
+  function openModal(title, bodyHtml) { $("#modalTitle").textContent = title; $("#modalBody").innerHTML = bodyHtml; $("#modalBackdrop").classList.add("open"); }
+  function closeModal() { $("#modalBackdrop").classList.remove("open"); }
+
+  function openCrosspointModal(eq) {
+    const target = eq || eqById(state.selectedEqId) || DATA.equipment.find(x => x.internal_routes?.length) || DATA.equipment[0];
+    if (!target) return;
+    const rows = (target.internal_routes || []).map(r => `<tr><td><b>${esc(r.in_port)}</b></td><td style="color:#2ac99a;font-weight:700;">⟶</td><td><b>${esc(r.out_port)}</b></td><td>${esc(r.note || "—")}</td></tr>`).join("");
+    openModal(`Crosspoint interno — ${target.name}`, `<div style="border:1px solid var(--border);border-radius:8px;overflow:auto;"><table class="som-table"><thead><tr><th>Entrada (IN)</th><th></th><th>Saída (OUT)</th><th>Sinal</th></tr></thead><tbody>${rows || '<tr><td colspan="4" style="color:var(--muted);text-align:center;">Nenhum crosspoint configurado neste equipamento.</td></tr>'}</tbody></table></div>`);
+  }
+
+  function openPinoutModal(cable) {
+    const c = cable || cableById(Array.from(state.selectedCableIds)[0]) || DATA.cables[0];
+    if (!c) return;
+    const pins = (c.pinout || []).map(p => `<tr><td>${esc(p.side)}</td><td><b>${esc(p.pin)}</b></td><td>${esc(p.function)}</td><td>${esc(p.opposite)}</td><td>${esc(p.voltage)}</td><td>${esc(p.ref)}</td></tr>`).join("") || `<tr><td colspan="6" style="color:var(--muted);text-align:center;">Conector ${esc(c.origin_connector)} → ${esc(c.dest_connector)} (${esc(c.protocol)})</td></tr>`;
+    const hist = (c.history || []).map(h => `<tr><td>${esc(h.ref)}</td><td>${esc(h.status)}</td><td>${esc(h.notes)}</td></tr>`).join("") || `<tr><td colspan="3" style="color:var(--muted);text-align:center;">Situação cadastrada: ${esc(c.status)}</td></tr>`;
+    openModal(`Pinagem e histórico — ${c.name}`, `<div style="border:1px solid var(--border);border-radius:8px;overflow:auto;"><table class="som-table"><thead><tr><th>Lado</th><th>Pino</th><th>Função</th><th>Oposto</th><th>Nível</th><th>Fonte</th></tr></thead><tbody>${pins}</tbody></table></div><div style="border:1px solid var(--border);border-radius:8px;overflow:auto;"><table class="som-table"><thead><tr><th>Referência</th><th>Situação</th><th>Notas</th></tr></thead><tbody>${hist}</tbody></table></div>`);
+  }
+
+  function openDvrChannelsModal() {
+    const rows = (DATA.dvrChannels || []).map(ch => `<tr data-dvr-src="${esc(ch.sourceEq)}" style="${ch.sourceEq ? 'cursor:pointer;' : ''}"><td><b>${esc(ch.ch)}</b></td><td>${esc(ch.port)}</td><td>${esc(ch.label)}</td><td><span class="badge">${esc(ch.status)}</span></td></tr>`).join("");
+    openModal("Canais DVR vinculados", `<div style="border:1px solid var(--border);border-radius:8px;overflow:auto;"><table class="som-table" id="dvrModalTable"><thead><tr><th>Canal DVR</th><th>Porta</th><th>Câmera / Fonte</th><th>Estado</th></tr></thead><tbody>${rows || '<tr><td colspan="4" style="color:var(--muted);text-align:center;">Nenhum canal DVR vinculado no projeto.</td></tr>'}</tbody></table></div>`);
+    document.querySelectorAll("#dvrModalTable tr[data-dvr-src]").forEach(tr => tr.addEventListener("click", () => {
+      const srcId = tr.getAttribute("data-dvr-src"); if (!srcId) return;
+      closeModal(); jumpToEquipmentOnDiagram(srcId, "video");
+    }));
+  }
+
+  function updateLegendForTab() {
+    const leg = $("#discLegend");
+    if (!state.colorByDisc) { leg.style.display = "none"; return; }
+    leg.style.display = "flex";
+    leg.innerHTML = isVideoTab()
+      ? `<span class="leg-dot"><i style="background:#38bdf8"></i>Vídeo / SDI</span><span class="leg-dot"><i style="background:#c084fc"></i>Fibra MUX</span><span class="leg-dot"><i style="color:#2ac99a;font-style:normal;font-weight:700;">⇄</i>Crosspoint / Loop-Out</span>`
+      : `<span class="leg-dot"><i style="background:#38bdf8"></i>Vídeo</span><span class="leg-dot"><i style="background:#c084fc"></i>Fibra</span><span class="leg-dot"><i style="background:#34d399"></i>Rede</span><span class="leg-dot"><i style="background:#fbbf24"></i>Serial</span><span class="leg-dot"><i style="background:#2dd4bf"></i>Acústica</span>`;
+  }
+
+  function setDrawerOpen(open) {
+    state.drawerOpen = open;
+    $("#topControlsDrawer").classList.toggle("open", open);
+    $("#drawerToggleBtn").classList.toggle("active-toggle", open);
+    $("#drawerToggleBtn").textContent = open ? "▴ Opções" : "▾ Opções";
+  }
+
+  function switchTab(tab) {
+    if (state.activeTab === "diagram" || state.activeTab === "video") state.savedVps[state.activeTab] = { ...state.vp };
+    const prevTab = state.activeTab; state.activeTab = tab;
+    $("#tabDiagramBtn").classList.toggle("active", tab === "diagram");
+    $("#tabVideoBtn").classList.toggle("active", tab === "video");
+    $("#tabInventoryBtn").classList.toggle("active", tab === "inventory");
+    const showStage = (tab === "diagram" || tab === "video");
+    $("#paneDiagram").classList.toggle("active", showStage);
+    $("#paneInventory").classList.toggle("active", tab === "inventory");
+    $("#btnVideoLayoutMode").style.display = tab === "video" ? "inline-flex" : "none";
+    if (showStage) {
+      updateLegendForTab();
+      setTimeout(() => {
+        renderDiagram();
+        if (state.savedVps[tab] && prevTab !== tab) { state.vp = { ...state.savedVps[tab] }; applyViewportTransform(); }
+        else fitDiagram(state.selectedEqId);
+      }, 15);
+    } else renderInventory();
+  }
+
+  function applySmallScreenMode(enabled, announce = true) {
+    state.smallScreen = enabled;
+    document.body.classList.toggle("small-screen", enabled);
+    const isTouchPhone = Math.min(window.innerWidth || 999, window.innerHeight || 999) <= 560 || Math.min(screen.width || 999, screen.height || 999) <= 560;
+    document.body.classList.toggle("sim-phone-frame", enabled && !isTouchPhone && window.innerWidth > 760);
+    $("#smallScreenBtn").classList.toggle("active-toggle", enabled);
+    $("#smallScreenBtn").textContent = enabled ? "📱 Tela Pequena: Ativa" : "📱 Modo Tela Pequena";
+    renderDiagram(); renderInventory();
+    setTimeout(() => fitDiagram(state.selectedEqId), 40);
+    if (announce) toast(enabled ? "Modo Tela Pequena ativado" : "Modo Horizontal (PC) ativado");
+  }
+
+  async function applyDeepLinkTarget() {
+    const hash = window.location.hash.replace(/^#/, "");
+    const params = new URLSearchParams(hash.includes("=") ? hash : window.location.search);
+    const eqTarget = params.get("eq") || DATA.initialTarget?.eq || "";
+    const cabTarget = params.get("cable") || DATA.initialTarget?.cable || "";
+    const tabTarget = params.get("tab") || DATA.initialTarget?.tab || "";
+    const hashToken = params.get("d") || "";
+
+    // Se ainda não há base completa salva no aparelho e o QR trouxe #d= compactado, monta ficha + mini-diagrama na hora!
+    if ((!DATA.equipment?.length || DATA.isTemporaryHashView) && hashToken) {
+      const mini = await decodeHashToken(hashToken);
+      const synth = synthesizePayloadFromHashMini(mini);
+      if (synth) applyLoadedPayload(synth, false);
+    }
+
+    if (tabTarget === "video" || tabTarget === "inventory") switchTab(tabTarget);
+    if (eqTarget) {
+      const eq = eqById(eqTarget);
+      if (eq) {
+        jumpToEquipmentOnDiagram(eq.id, tabTarget === "video" ? "video" : "diagram");
+        $("#qrBannerText").innerHTML = `📷 <b>${esc(eq.name)}</b> (${esc(eq.roomLabel)})`;
+        $("#qrBanner").classList.add("show");
+      }
+    } else if (cabTarget) {
+      const c = cableById(cabTarget);
+      if (c) {
+        switchTab("diagram"); state.selectedEqId = null; state.selectedCableIds = new Set([c.id]);
+        renderDiagram(); fitDiagram(c.origin);
+        $("#qrBannerText").innerHTML = `📷 Cabo <b>${esc(c.name)}</b> (${esc(c.origin_port)} → ${esc(c.dest_port)})`;
+        $("#qrBanner").classList.add("show");
+      }
+    }
+  }
+
+  function handleJsonImportFile(file) {
+    if (!file) return;
+    file.text().then(txt => {
+      try {
+        const parsed = JSON.parse(txt);
+        if (!Array.isArray(parsed.equipment) || !Array.isArray(parsed.cables)) throw new Error("Arquivo inválido");
+        applyLoadedPayload(parsed, true);
+        setDrawerOpen(false);
+        toast(`Base de ${parsed.vesselName || "Inventário"} salva offline (${parsed.equipment.length} itens)!`);
+        applyDeepLinkTarget();
+      } catch (err) {
+        toast("Não foi possível ler o JSON: escolha o arquivo Base JSON exportado pelo S.O.M.");
+      }
+    });
+  }
+
+  function initControls() {
+    const rf = $("#invRoomFilter");
+    DATA.rooms.forEach(r => { const opt = document.createElement("option"); opt.value = r.id; opt.textContent = r.title; rf.appendChild(opt); });
+
+    const triggerImport = () => $("#jsonBaseInput").click();
+    $("#btnImportBaseDrawer").addEventListener("click", triggerImport);
+    $("#btnImportBaseWelcome").addEventListener("click", triggerImport);
+    $("#jsonBaseInput").addEventListener("change", ev => { handleJsonImportFile(ev.target.files[0]); ev.target.value = ""; });
+
+    const toggleLock = () => {
+      state.locked = !state.locked;
+      $("#lockToggleBtn").className = state.locked ? "btn sm locked-on" : "btn sm unlocked-on";
+      $("#lockToggleBtn").textContent = state.locked ? "🔒 Blocos travados" : "🔓 Mover blocos";
+      $("#quickLockBtn").className = state.locked ? "btn sm locked-on" : "btn sm unlocked-on";
+      $("#quickLockBtn").textContent = state.locked ? "🔒" : "🔓";
+      renderDiagram();
+      toast(state.locked ? "Blocos travados" : "Blocos liberados para arraste");
+    };
+    $("#drawerToggleBtn").addEventListener("click", () => setDrawerOpen(!state.drawerOpen));
+    $("#quickLockBtn").addEventListener("click", toggleLock);
+    $("#lockToggleBtn").addEventListener("click", toggleLock);
+    $("#tabDiagramBtn").addEventListener("click", () => switchTab("diagram"));
+    $("#tabVideoBtn").addEventListener("click", () => switchTab("video"));
+    $("#tabInventoryBtn").addEventListener("click", () => switchTab("inventory"));
+    $("#qrOpenFichaBtn").addEventListener("click", () => { if (state.selectedEqId) { state.invSelectedId = state.selectedEqId; state.flowExpandedId = state.selectedEqId; } switchTab("inventory"); });
+    $("#qrDismissBtn").addEventListener("click", () => $("#qrBanner").classList.remove("show"));
+    $("#themeSelect").addEventListener("change", ev => { document.documentElement.setAttribute("data-theme", ev.target.value); renderDiagram(); });
+    $("#resetLayoutBtn").addEventListener("click", () => { state.customOffsets = {}; state.videoOffsets = {}; state.roomOffsets = {}; $("#resetLayoutBtn").style.display = "none"; renderDiagram(); fitDiagram(); });
+    $("#smallScreenBtn").addEventListener("click", () => applySmallScreenMode(!state.smallScreen));
+    $("#disciplineSelect").addEventListener("change", ev => { state.discipline = ev.target.value; renderDiagram(); });
+    $("#chkDiscColors").addEventListener("change", ev => { state.colorByDisc = ev.target.checked; updateLegendForTab(); renderDiagram(); });
+    $("#chkBundles").addEventListener("change", ev => { state.bundleParallel = ev.target.checked; renderDiagram(); });
+    $("#chkScreens").addEventListener("change", ev => { state.includeScreens = ev.target.checked; renderDiagram(); });
+    $("#btnMatrixView").addEventListener("click", () => { setDrawerOpen(false); openCrosspointModal(); });
+    $("#btnDvrChannels").addEventListener("click", () => { setDrawerOpen(false); openDvrChannelsModal(); });
+    $("#btnVideoLayoutMode").addEventListener("click", () => {
+      state.videoFlowMode = !state.videoFlowMode;
+      $("#btnVideoLayoutMode").classList.toggle("active-toggle", state.videoFlowMode);
+      $("#btnVideoLayoutMode").textContent = state.videoFlowMode ? "Layout: Fluxo limpo" : "Layout: Por espaços";
+      delete state.savedVps.video; renderDiagram(); fitDiagram(state.selectedEqId);
+    });
+    $("#btnZoomIn").addEventListener("click", () => zoomAroundPoint(1.22, $("#diagramStage").clientWidth / 2, $("#diagramStage").clientHeight / 2));
+    $("#btnZoomOut").addEventListener("click", () => zoomAroundPoint(1 / 1.22, $("#diagramStage").clientWidth / 2, $("#diagramStage").clientHeight / 2));
+    $("#btnFit").addEventListener("click", () => fitDiagram());
+
+    const toggleCableDrawer = () => {
+      state.cablePanelCollapsed = !state.cablePanelCollapsed;
+      $("#cablePanelWrap").classList.toggle("collapsed", state.cablePanelCollapsed);
+      document.body.classList.toggle("landscape-idle", state.selectedCableIds.size === 0 && state.cablePanelCollapsed);
+      updateCableToggleText();
+    };
+    $("#btnToggleCablePanel").addEventListener("click", toggleCableDrawer);
+    $("#btnFloatingCables").addEventListener("click", toggleCableDrawer);
+    $("#btnPinout").addEventListener("click", () => openPinoutModal());
+    $("#btnClearSel").addEventListener("click", () => clearDiagramSelection());
+
+    $("#invSearch").addEventListener("input", () => renderInventory());
+    $("#invRoomFilter").addEventListener("change", () => renderInventory());
+    $("#btnJumpDiagramDesktop").addEventListener("click", () => jumpToEquipmentOnDiagram(state.invSelectedId));
+    $("#btnModalPorts").addEventListener("click", () => {
+      const eq = eqById(state.invSelectedId); if (!eq) return;
+      openModal(`Portas — ${eq.name}`, `<table class="som-table"><thead><tr><th>Porta</th><th>Interface</th><th>Notas</th></tr></thead><tbody>${(eq.ports || []).map(p => `<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.type)}</td><td>${esc(p.notes)}</td></tr>`).join("") || '<tr><td colspan="3">Sem portas</td></tr>'}</tbody></table>`);
+    });
+    $("#btnModalCables").addEventListener("click", () => {
+      const eq = eqById(state.invSelectedId); if (!eq) return;
+      const list = DATA.cables.filter(c => c.origin === eq.id || c.dest === eq.id);
+      openModal(`Cabos associados — ${eq.name}`, `<table class="som-table"><thead><tr><th>Cabo</th><th>Origem</th><th>Destino</th><th>Protocolo</th></tr></thead><tbody>${list.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(eqById(c.origin)?.name)} [${esc(c.origin_port)}]</td><td>${esc(eqById(c.dest)?.name)} [${esc(c.dest_port)}]</td><td>${esc(c.protocol)}</td></tr>`).join("") || '<tr><td colspan="4">Sem cabos</td></tr>'}</tbody></table>`);
+    });
+    $("#btnModalFiles").addEventListener("click", () => {
+      const eq = eqById(state.invSelectedId); if (!eq) return;
+      openModal(`Anexos — ${eq.name}`, `<table class="som-table"><thead><tr><th>Arquivo</th></tr></thead><tbody>${(eq.files || []).map(f => `<tr><td>📄 ${esc(f)}</td></tr>`).join("") || '<tr><td>Sem anexos</td></tr>'}</tbody></table>`);
+    });
+    $("#btnModalIps").addEventListener("click", () => {
+      const eq = eqById(state.invSelectedId); if (!eq) return;
+      openModal(`Endereços IP — ${eq.name}`, `<table class="som-table"><thead><tr><th>Rede</th><th>IP</th></tr></thead><tbody>${(eq.ips || []).map(ip => `<tr><td>${esc(ip.net)}</td><td><b>${esc(ip.ip)}</b></td></tr>`).join("") || '<tr><td colspan="2">Sem IP</td></tr>'}</tbody></table>`);
+    });
+    $("#modalCloseTop").addEventListener("click", closeModal);
+    $("#modalCloseBtn").addEventListener("click", closeModal);
+    $("#modalBackdrop").addEventListener("click", ev => { if (ev.target.id === "modalBackdrop") closeModal(); });
+
+    let lastVertLayout = useVerticalDiagramLayout(), resizeTimer = null;
+    const onVpChange = () => {
+      const isTouchPhone = Math.min(window.innerWidth || 999, window.innerHeight || 999) <= 560 || Math.min(screen.width || 999, screen.height || 999) <= 560;
+      if (state.smallScreen) document.body.classList.toggle("sim-phone-frame", !isTouchPhone && window.innerWidth > 760);
+      const nowVert = useVerticalDiagramLayout();
+      if (nowVert !== lastVertLayout) { lastVertLayout = nowVert; renderDiagram(); }
+      fitDiagram(state.selectedEqId);
+    };
+    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(onVpChange, 90); });
+    window.addEventListener("orientationchange", () => setTimeout(onVpChange, 160));
+    window.addEventListener("hashchange", () => applyDeepLinkTarget());
+  }
+
+  // Inicialização: se for HTML embutido com dados reais, salva na hora; se for casca PWA vazia, carrega base salva do IndexedDB
+  initControls();
+  setupDiagramInteractions();
+  updateLegendForTab();
+  applySmallScreenMode(state.smallScreen, false);
+
+  (async () => {
+    if (DATA.equipment && DATA.equipment.length > 0 && !DATA.isPwaShell) {
+      saveDbSnapshot(DATA);
+      applyLoadedPayload(DATA, false);
+    } else {
+      const cached = await loadDbSnapshot();
+      if (cached && cached.equipment?.length) {
+        applyLoadedPayload(cached, false);
+      } else {
+        document.getElementById("emptyPwaCard").classList.add("show");
+      }
+    }
+    setTimeout(() => applyDeepLinkTarget(), 50);
+  })();
+})();
+</script>
+</body>
+</html>
