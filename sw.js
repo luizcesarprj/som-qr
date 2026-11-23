@@ -1,4 +1,4 @@
-const CACHE_NAME = "som-qr-pwa-v017-3";
+const CACHE_NAME = "som-qr-pwa-v017-4";
 const CORE_ASSETS = [
   "./",
   "./index.html",

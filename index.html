@@ -450,7 +450,7 @@
     navigator.serviceWorker.register("./sw.js").then(reg => {
       try { reg.update(); } catch (_) {}
       const b = document.getElementById("pwaCacheBadge");
-      if (b) b.textContent = "✓ PWA v2 Offline ativo";
+      if (b) b.textContent = "✓ PWA v3 Offline ativo";
     }).catch(() => {});
   }
 
@@ -564,8 +564,59 @@
     };
   }
 
+  function expandColumnarPayload(p) {
+    if (!p || p._c !== 2) return p;
+    const rooms = (p.r || []).map((r, i) => ({
+      id: "rm_" + i, title: r[0] || "Espaço", isRov: !!r[1], tier: r[2] ?? 2,
+      hx: r[3], hy: r[4], hw: r[5], hh: r[6], vx: r[7], vy: r[8], vw: r[9], vh: r[10],
+      bays: (r[11] || []).map(b => ({ title: b[0], x: b[1], y: b[2], w: b[3], h: b[4], screenBay: !!b[5] }))
+    }));
+    const locLabels = { fixed: "Instalado", spare: "Reserva", rov: "Instalado (ROV)" };
+    const equipment = (p.e || []).map((e, i) => ({
+      id: "eq_" + i, name: e[0] || "Equipamento", type: e[1] || "Outro", model: e[2] || "—",
+      serial: e[3] || "", channel_main: e[4] || "", channel_secondary: "", firmware: "", ip: e[5] || "",
+      room: e[6] >= 0 && rooms[e[6]] ? rooms[e[6]].id : "__other",
+      location: e[7] || "fixed", isDisplay: !!e[8], roomLabel: e[9] || p.v || "A bordo",
+      statusLabel: locLabels[e[7] || "fixed"] || "Instalado",
+      hx: e[10] ?? 60, hy: e[11] ?? 120, vx: e[12] ?? 60, vy: e[13] ?? 120,
+      ports: (e[14] || []).map(pt => ({ name: pt[0] || "", type: pt[1] || "", notes: pt[2] || "" })),
+      internal_routes: (e[15] || []).map(rt => ({ in_port: rt[0] || "", out_port: rt[1] || "", note: rt[2] || "" })),
+      ips: (e[16] || []).map(ip => ({ net: ip[0] || "Rede", ip: ip[1] || "" })),
+      failures: (e[17] || []).map(fl => ({ date: fl[0] || "", desc: fl[1] || "", status: fl[2] || "Aberta" })),
+      files: [], notes: e[18] || ""
+    }));
+    const cables = (p.c || []).map((c, i) => ({
+      id: "cb_" + i, name: c[0] || "Cabo",
+      origin: equipment[c[1]] ? equipment[c[1]].id : "eq_0",
+      origin_port: c[2] || "—",
+      dest: equipment[c[3]] ? equipment[c[3]].id : "eq_0",
+      dest_port: c[4] || "—",
+      origin_connector: c[5] || "—",
+      dest_connector: c[6] || "—",
+      protocol: c[7] || "", cable_type: c[7] || "",
+      discipline: c[8] || "other", diagram: c[9] || "equipment",
+      status: c[10] || "Confirmada",
+      pinout: (c[11] || []).map(pn => ({ side: pn[0] || "", pin: pn[1] || "", function: pn[2] || "", opposite: pn[3] || "", voltage: pn[4] || "", ref: pn[5] || "" })),
+      history: []
+    }));
+    const videoFlowCoords = {};
+    Object.entries(p.vf || {}).forEach(([k, vf]) => {
+      const idx = parseInt(k, 10);
+      if (equipment[idx]) videoFlowCoords[equipment[idx].id] = { h: vf[0], v: vf[1], level: vf[2] || 0 };
+    });
+    const videoCableIds = (p.vc || []).filter(idx => cables[idx]).map(idx => cables[idx].id);
+    const videoStageBanners = p.vb || [];
+    const dvrChannels = (p.dv || []).map(d => ({
+      ch: d[0], port: d[1] || "—", label: d[2] || "—",
+      sourceEq: d[3] >= 0 && equipment[d[3]] ? equipment[d[3]].id : "",
+      status: d[4] ? "Vinculado" : "Sem vínculo"
+    }));
+    return { vesselName: p.v || "S.O.M.", rooms, equipment, cables, videoFlowCoords, videoCableIds, videoStageBanners, dvrChannels };
+  }
+
   function normalizeImportedPayload(raw) {
     if (!raw || typeof raw !== "object") return raw;
+    if (raw._c === 2) raw = expandColumnarPayload(raw);
     raw.rooms = (raw.rooms || []).map(r => ({ bays: [], isRov: false, tier: 2, ...r }));
     raw.equipment = (raw.equipment || []).map(e => ({
       model: "—", serial: "", channel_main: "", channel_secondary: "", firmware: "", ip: "",
@@ -1481,7 +1532,8 @@
 
     // Se o QR Code trouxe o inventário completo (#full=...), importa e salva offline no celular na hora!
     if (fullToken) {
-      const fullDecoded = await decodeHashToken(fullToken);
+      let fullDecoded = await decodeHashToken(fullToken);
+      if (fullDecoded && fullDecoded._c === 2) fullDecoded = expandColumnarPayload(fullDecoded);
       if (fullDecoded && Array.isArray(fullDecoded.equipment)) {
         applyLoadedPayload(fullDecoded, true);
         toast(`Inventário de ${fullDecoded.vesselName || "bordo"} importado (${fullDecoded.equipment.length} itens)!`);
@@ -1582,10 +1634,10 @@
       const gfDiv = (a, b) => a === 0 ? 0 : GF_EXP[(GF_LOG[a] + 255 - GF_LOG[b]) % 255];
 
       const VSPEC = {
-        L: {1:[19,7,1,19,0,0],2:[34,10,1,34,0,0],3:[55,15,1,55,0,0],4:[80,20,1,80,0,0],5:[108,26,1,108,0,0],6:[136,18,2,68,0,0],7:[156,20,2,78,0,0],8:[194,24,2,97,0,0],9:[232,30,2,116,0,0],10:[274,18,2,68,2,69],11:[324,20,4,81,0,0],12:[370,24,2,92,2,93],13:[428,26,4,107,0,0],14:[461,30,3,115,1,116],15:[523,22,5,87,1,88],16:[589,24,5,98,1,99]},
-        M: {1:[16,10,1,16,0,0],2:[28,16,1,28,0,0],3:[44,26,1,44,0,0],4:[64,18,2,32,0,0],5:[86,24,2,43,0,0],6:[108,16,4,27,0,0],7:[124,18,4,31,0,0],8:[154,22,2,38,2,39],9:[182,22,3,36,2,37],10:[216,26,4,43,1,44],11:[254,30,1,50,4,51],12:[290,22,6,36,2,37],13:[334,22,8,37,1,38],14:[365,24,4,40,5,41],15:[415,24,5,41,5,42],16:[453,28,7,45,3,46]}
+        L: {1:[19,7,1,19,0,0],2:[34,10,1,34,0,0],3:[55,15,1,55,0,0],4:[80,20,1,80,0,0],5:[108,26,1,108,0,0],6:[136,18,2,68,0,0],7:[156,20,2,78,0,0],8:[194,24,2,97,0,0],9:[232,30,2,116,0,0],10:[274,18,2,68,2,69],11:[324,20,4,81,0,0],12:[370,24,2,92,2,93],13:[428,26,4,107,0,0],14:[461,30,3,115,1,116],15:[523,22,5,87,1,88],16:[589,24,5,98,1,99],17:[647,28,1,107,5,108],18:[721,30,5,120,1,121],19:[795,28,3,113,4,114],20:[861,28,3,107,5,108]},
+        M: {1:[16,10,1,16,0,0],2:[28,16,1,28,0,0],3:[44,26,1,44,0,0],4:[64,18,2,32,0,0],5:[86,24,2,43,0,0],6:[108,16,4,27,0,0],7:[124,18,4,31,0,0],8:[154,22,2,38,2,39],9:[182,22,3,36,2,37],10:[216,26,4,43,1,44],11:[254,30,1,50,4,51],12:[290,22,6,36,2,37],13:[334,22,8,37,1,38],14:[365,24,4,40,5,41],15:[415,24,5,41,5,42],16:[453,28,7,45,3,46],17:[507,28,10,46,1,47],18:[563,26,9,43,4,44],19:[627,26,3,44,11,45],20:[669,26,3,41,13,42]}
       };
-      const ALIGN = {1:[],2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50],11:[6,30,54],12:[6,32,58],13:[6,34,62],14:[6,26,46,66],15:[6,26,48,70],16:[6,26,50,74]};
+      const ALIGN = {1:[],2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50],11:[6,30,54],12:[6,32,58],13:[6,34,62],14:[6,26,46,66],15:[6,26,48,70],16:[6,26,50,74],17:[6,30,54,78],18:[6,30,56,82],19:[6,30,58,86],20:[6,34,62,90]};
 
       function rsCorrectBlock(cw, ecLen) {
         // Calcula síndromes S_0 .. S_{ecLen-1} com raízes GF_EXP[0..ecLen-1]
@@ -1700,7 +1752,7 @@
       function decodeMatrix(mat) {
         const size = mat.length;
         const ver = Math.round((size - 17) / 4);
-        if (ver < 1 || ver > 16 || 17 + 4 * ver !== size) return null;
+        if (ver < 1 || ver > 20 || 17 + 4 * ver !== size) return null;
 
         const fCoords1 = [[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
         const fCoords2 = [[size-1,8],[size-2,8],[size-3,8],[size-4,8],[size-5,8],[size-6,8],[size-7,8],[8,size-8],[8,size-7],[8,size-6],[8,size-5],[8,size-4],[8,size-3],[8,size-2],[8,size-1]];
@@ -1985,7 +2037,7 @@
         const estVer = Math.round((((distH + distV) / (2 * avgMod)) - 10) / 4);
 
         for (const ver of [estVer, estVer - 1, estVer + 1]) {
-          if (ver < 1 || ver > 16) continue;
+          if (ver < 1 || ver > 20) continue;
           const size = 17 + 4 * ver;
           // 4º ponto: padrão de alinhamento inferior direito em (size - 6.5, size - 6.5) para ver >= 2
           let brSrc = [size - 3.5, size - 3.5];
@@ -2102,7 +2154,8 @@
       };
 
       const finishWithToken = async (tok) => {
-        const parsed = await decodeHashToken(tok);
+        let parsed = await decodeHashToken(tok);
+        if (parsed && parsed._c === 2) parsed = expandColumnarPayload(parsed);
         if (parsed && Array.isArray(parsed.equipment)) {
           stopCamScanner();
           origClose();
