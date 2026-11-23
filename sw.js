@@ -1,4 +1,4 @@
-const CACHE_NAME = "som-qr-pwa-v017-1";
+const CACHE_NAME = "som-qr-pwa-v017-3";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -24,16 +24,14 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const req = event.request;
   if (req.method !== "GET") return;
+  // Network-First com fallback instantâneo para o cache offline (garante atualização imediata e funciona 100% em Modo Avião)
   event.respondWith(
-    caches.match(req, { ignoreSearch: true }).then(cached => {
-      const fetchPromise = fetch(req).then(netResp => {
-        if (netResp && netResp.status === 200 && req.url.startsWith(self.location.origin)) {
-          const clone = netResp.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, clone));
-        }
-        return netResp;
-      }).catch(() => cached || caches.match("./index.html"));
-      return cached || fetchPromise;
-    })
+    fetch(req).then(netResp => {
+      if (netResp && netResp.status === 200 && req.url.startsWith(self.location.origin)) {
+        const clone = netResp.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(req, clone));
+      }
+      return netResp;
+    }).catch(() => caches.match(req, { ignoreSearch: true }).then(c => c || caches.match("./index.html")))
   );
 });

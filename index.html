@@ -270,6 +270,8 @@
         <span class="vessel-short" id="vesselLabelTop">S.O.M. QR Viewer</span>
       </div>
       <div class="slim-right">
+        <button class="btn sm primary" id="quickScanQrBtn" type="button" title="Ler QR Code da tela do PC para importar ou atualizar o inventário">📷 QR</button>
+        <button class="btn sm primary" id="quickSaveOfflineBtn" type="button" title="Baixar cópia autônoma .html para abrir no celular sem rede" style="display:none;">💾 Salvar</button>
         <button class="btn sm locked-on" id="quickLockBtn" type="button" title="Travar ou liberar o arraste de blocos">🔒</button>
         <button class="btn sm" id="drawerToggleBtn" type="button">▾ Opções</button>
       </div>
@@ -305,7 +307,9 @@
           <label class="chk-label"><input type="checkbox" id="chkScreens"> Incluir telas</label>
         </div>
         <div class="drawer-group">
-          <button class="btn sm primary" id="btnImportBaseDrawer" type="button" title="Importar ou atualizar arquivo .json da embarcação para consulta em Modo Avião">📂 Carregar Base (.json)</button>
+          <button class="btn sm primary" id="btnScanPcQrDrawer" type="button" title="Apontar a câmera para o QR Code na tela do PC e importar o inventário">📷 Ler QR do PC</button>
+          <button class="btn sm" id="btnSaveOfflineDrawer" type="button" title="Salvar este inventário completo em um arquivo .html offline no aparelho">💾 Baixar Offline (.html)</button>
+          <button class="btn sm" id="btnImportBaseDrawer" type="button" title="Importar arquivo .json da embarcação">📂 Carregar (.json)</button>
           <input type="file" id="jsonBaseInput" accept=".json,application/json" style="display:none;">
           <select id="themeSelect" class="inp" title="Tema visual do S.O.M.">
             <option value="dark">Azul noturno</option>
@@ -329,10 +333,13 @@
     <div id="emptyPwaCard">
       <div class="som-logo" style="width:48px;height:48px;font-size:16px;border-radius:12px;">SOM</div>
       <h2 style="margin:0;font-size:17px;">Visualizador PWA Offline pronto neste aparelho</h2>
-      <p style="margin:0;max-width:440px;color:var(--muted);line-height:1.5;font-size:12.5px;">
-        O aplicativo já foi salvo na memória do seu navegador. Carregue abaixo o arquivo <b>Base JSON do Inventário</b> exportado pelo S.O.M. para consultar todo o Diagrama, Fluxo de vídeos e Inventário pelas etiquetas QR mesmo em <b>Modo Avião</b>.
+      <p style="margin:0;max-width:460px;color:var(--muted);line-height:1.5;font-size:12.5px;">
+        Aponte a câmera diretamente para o <b>QR Code na tela do S.O.M. no PC</b> para importar todo o Diagrama, Fluxo de vídeos e Inventário para a memória offline deste telefone (ou selecione o arquivo Base JSON).
       </p>
-      <button class="btn primary" id="btnImportBaseWelcome" type="button" style="padding:8px 16px;font-size:13px;">📂 Selecionar Base do Navio (.json)</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+        <button class="btn primary" id="btnScanPcQrWelcome" type="button" style="padding:9px 16px;font-size:13px;">📷 Ler QR da Tela do PC</button>
+        <button class="btn" id="btnImportBaseWelcome" type="button" style="padding:9px 14px;font-size:13px;">📂 Carregar arquivo (.json)</button>
+      </div>
     </div>
 
     <div class="workspace">
@@ -436,9 +443,14 @@
 
   // Registro do Service Worker PWA quando aberto em HTTPS / localhost
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
-    navigator.serviceWorker.register("./sw.js").then(() => {
+    let refreshingSw = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!refreshingSw) { refreshingSw = true; window.location.reload(); }
+    });
+    navigator.serviceWorker.register("./sw.js").then(reg => {
+      try { reg.update(); } catch (_) {}
       const b = document.getElementById("pwaCacheBadge");
-      if (b) b.textContent = "✓ PWA Offline ativo";
+      if (b) b.textContent = "✓ PWA v2 Offline ativo";
     }).catch(() => {});
   }
 
@@ -552,8 +564,28 @@
     };
   }
 
+  function normalizeImportedPayload(raw) {
+    if (!raw || typeof raw !== "object") return raw;
+    raw.rooms = (raw.rooms || []).map(r => ({ bays: [], isRov: false, tier: 2, ...r }));
+    raw.equipment = (raw.equipment || []).map(e => ({
+      model: "—", serial: "", channel_main: "", channel_secondary: "", firmware: "", ip: "",
+      location: "fixed", isDisplay: false, roomLabel: raw.vesselName || "A bordo", statusLabel: "Instalado",
+      notes: "", internal_routes: [], ports: [], ips: [], files: [], failures: [], ...e
+    }));
+    raw.cables = (raw.cables || []).map(c => ({
+      origin_port: "—", dest_port: "—", origin_connector: "—", dest_connector: "—",
+      protocol: "", cable_type: "", discipline: "other", diagram: "equipment", status: "Confirmada",
+      pinout: [], history: [], ...c
+    }));
+    raw.dvrChannels = raw.dvrChannels || [];
+    raw.videoFlowCoords = raw.videoFlowCoords || {};
+    raw.videoCableIds = raw.videoCableIds || [];
+    raw.videoStageBanners = raw.videoStageBanners || [];
+    return raw;
+  }
+
   function applyLoadedPayload(newPayload, persist = false) {
-    DATA = newPayload;
+    DATA = normalizeImportedPayload(newPayload);
     VIDEO_FLOW_COORDS = DATA.videoFlowCoords || {};
     VIDEO_EQ_SET = new Set(Object.keys(VIDEO_FLOW_COORDS));
     VIDEO_CABLE_IDS = new Set(DATA.videoCableIds || []);
@@ -1444,6 +1476,18 @@
     const cabTarget = params.get("cable") || DATA.initialTarget?.cable || "";
     const tabTarget = params.get("tab") || DATA.initialTarget?.tab || "";
     const hashToken = params.get("d") || "";
+    const fullToken = params.get("full") || "";
+    const autoScan = params.get("scan") === "1";
+
+    // Se o QR Code trouxe o inventário completo (#full=...), importa e salva offline no celular na hora!
+    if (fullToken) {
+      const fullDecoded = await decodeHashToken(fullToken);
+      if (fullDecoded && Array.isArray(fullDecoded.equipment)) {
+        applyLoadedPayload(fullDecoded, true);
+        toast(`Inventário de ${fullDecoded.vesselName || "bordo"} importado (${fullDecoded.equipment.length} itens)!`);
+        try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch (_) {}
+      }
+    }
 
     // Se ainda não há base completa salva no aparelho e o QR trouxe #d= compactado, monta ficha + mini-diagrama na hora!
     if ((!DATA.equipment?.length || DATA.isTemporaryHashView) && hashToken) {
@@ -1452,6 +1496,11 @@
       if (synth) applyLoadedPayload(synth, false);
     }
 
+    if (autoScan && typeof window._somOpenPcScanner === "function") {
+      try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch (_) {}
+      setTimeout(() => window._somOpenPcScanner(), 120);
+      return;
+    }
     if (tabTarget === "video" || tabTarget === "inventory") switchTab(tabTarget);
     if (eqTarget) {
       const eq = eqById(eqTarget);
@@ -1495,6 +1544,674 @@
     $("#btnImportBaseDrawer").addEventListener("click", triggerImport);
     $("#btnImportBaseWelcome").addEventListener("click", triggerImport);
     $("#jsonBaseInput").addEventListener("change", ev => { handleJsonImportFile(ev.target.files[0]); ev.target.value = ""; });
+
+    if (location.protocol === "http:") {
+      const qSave = $("#quickSaveOfflineBtn");
+      if (qSave) qSave.style.display = "inline-flex";
+    }
+
+    const downloadOfflineHtml = () => {
+      if (!DATA.equipment?.length) { toast("Importe ou abra um inventário primeiro."); return; }
+      if (location.protocol === "http:" && location.port) {
+        window.location.href = "/download";
+        return;
+      }
+      const cloned = document.documentElement.outerHTML.replace(
+        /let DATA = [\s\S]*?;\n\s*let VIDEO_FLOW_COORDS/,
+        "let DATA = " + JSON.stringify({ ...DATA, isPwaShell: false }) + ";\n  let VIDEO_FLOW_COORDS"
+      );
+      const blob = new Blob(["<!DOCTYPE html>\n" + cloned], { type: "text/html;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      const vSafe = String(DATA.vesselName || "Inventario").replace(/[^A-Za-z0-9_-]+/g, "_");
+      a.download = `SOM_Inventario_${vSafe}.html`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      toast("Arquivo HTML offline salvo no aparelho!");
+    };
+    $("#btnSaveOfflineDrawer").addEventListener("click", downloadOfflineHtml);
+    $("#quickSaveOfflineBtn").addEventListener("click", downloadOfflineHtml);
+
+    // Decodificador QR ISO/IEC 18004 compacto em JS puro (Versões 1 a 16, Níveis L e M, Correção Reed-Solomon GF(256))
+    function createSomPureQrDecoder() {
+      const GF_EXP = new Uint8Array(512), GF_LOG = new Uint8Array(256);
+      let v = 1;
+      for (let i = 0; i < 255; i++) { GF_EXP[i] = v; GF_LOG[v] = i; v <<= 1; if (v & 0x100) v ^= 0x11d; }
+      for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+      const gfMul = (a, b) => (a === 0 || b === 0) ? 0 : GF_EXP[GF_LOG[a] + GF_LOG[b]];
+      const gfDiv = (a, b) => a === 0 ? 0 : GF_EXP[(GF_LOG[a] + 255 - GF_LOG[b]) % 255];
+
+      const VSPEC = {
+        L: {1:[19,7,1,19,0,0],2:[34,10,1,34,0,0],3:[55,15,1,55,0,0],4:[80,20,1,80,0,0],5:[108,26,1,108,0,0],6:[136,18,2,68,0,0],7:[156,20,2,78,0,0],8:[194,24,2,97,0,0],9:[232,30,2,116,0,0],10:[274,18,2,68,2,69],11:[324,20,4,81,0,0],12:[370,24,2,92,2,93],13:[428,26,4,107,0,0],14:[461,30,3,115,1,116],15:[523,22,5,87,1,88],16:[589,24,5,98,1,99]},
+        M: {1:[16,10,1,16,0,0],2:[28,16,1,28,0,0],3:[44,26,1,44,0,0],4:[64,18,2,32,0,0],5:[86,24,2,43,0,0],6:[108,16,4,27,0,0],7:[124,18,4,31,0,0],8:[154,22,2,38,2,39],9:[182,22,3,36,2,37],10:[216,26,4,43,1,44],11:[254,30,1,50,4,51],12:[290,22,6,36,2,37],13:[334,22,8,37,1,38],14:[365,24,4,40,5,41],15:[415,24,5,41,5,42],16:[453,28,7,45,3,46]}
+      };
+      const ALIGN = {1:[],2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50],11:[6,30,54],12:[6,32,58],13:[6,34,62],14:[6,26,46,66],15:[6,26,48,70],16:[6,26,50,74]};
+
+      function rsCorrectBlock(cw, ecLen) {
+        // Calcula síndromes S_0 .. S_{ecLen-1} com raízes GF_EXP[0..ecLen-1]
+        let allZero = true;
+        const S = new Uint8Array(ecLen);
+        for (let i = 0; i < ecLen; i++) {
+          let s = 0, root = GF_EXP[i];
+          for (let j = 0; j < cw.length; j++) s = gfMul(s, root) ^ cw[j];
+          S[i] = s;
+          if (s !== 0) allZero = false;
+        }
+        if (allZero) return cw;
+
+        // Berlekamp-Massey para polinômio localizador de erros C(x)
+        let C = [1], B = [1], L = 0, m = 1, b = 1;
+        for (let n = 0; n < ecLen; n++) {
+          let d = S[n];
+          for (let i = 1; i <= L; i++) d ^= gfMul(C[i] || 0, S[n - i]);
+          if (d === 0) { m++; }
+          else {
+            const T = C.slice();
+            const coef = gfDiv(d, b);
+            while (C.length < B.length + m) C.push(0);
+            for (let i = 0; i < B.length; i++) C[i + m] ^= gfMul(coef, B[i]);
+            if (2 * L <= n) { L = n + 1 - L; B = T; b = d; m = 1; } else { m++; }
+          }
+        }
+        if (L > (ecLen >> 1)) return null;
+
+        // Busca de Chien para encontrar posições de erro
+        const errPos = [], Xinv = [];
+        for (let i = 0; i < cw.length; i++) {
+          const xInv = GF_EXP[(255 - i) % 255]; // X_k^{-1} onde X_k = alpha^{cw.length - 1 - pos}? Vamos testar convenção polinomial!
+          let sum = 0, p = 1;
+          for (let j = 0; j < C.length; j++) { sum ^= gfMul(C[j], p); p = gfMul(p, xInv); }
+          if (sum === 0) { errPos.push(cw.length - 1 - i); Xinv.push(xInv); }
+        }
+        if (errPos.length !== L) return null;
+
+        // Algoritmo de Forney para magnitudes de erro: Omega(x) = S(x) * C(x) mod x^{ecLen}
+        const omega = new Uint8Array(ecLen);
+        for (let i = 0; i < ecLen; i++) {
+          let v2 = 0;
+          for (let j = 0; j <= i && j < C.length; j++) v2 ^= gfMul(C[j], S[i - j]);
+          omega[i] = v2;
+        }
+        const out = Uint8Array.from(cw);
+        for (let k = 0; k < errPos.length; k++) {
+          const xi = Xinv[k];
+          let num = 0, p = 1;
+          for (let j = 0; j < ecLen; j++) { num ^= gfMul(omega[j], p); p = gfMul(p, xi); }
+          let den = 0, p2 = 1;
+          for (let j = 1; j < C.length; j += 2) { den ^= gfMul(C[j], p2); p2 = gfMul(p2, gfMul(xi, xi)); }
+          if (den === 0) return null;
+          const Xk = GF_EXP[(255 - GF_LOG[xi]) % 255];
+          out[errPos[k]] ^= gfMul(Xk, gfDiv(num, den));
+        }
+        for (let i = 0; i < ecLen; i++) {
+          let s = 0, root = GF_EXP[i];
+          for (let j = 0; j < out.length; j++) s = gfMul(s, root) ^ out[j];
+          if (s !== 0) return null;
+        }
+        return out;
+      }
+
+      function popcount15(x) { let c = 0; while (x) { c += x & 1; x >>= 1; } return c; }
+      function decodeFormatInfo(bits1, bits2) {
+        let best = null, bestDist = 4;
+        const FMT_EC = [1, 0]; // 01 -> L, 00 -> M (somente L e M usados no qr_codec, mas suportamos Q=3, H=2 p/ leitura geral)
+        const EC_MAP = { 1: "L", 0: "M", 3: "Q", 2: "H" };
+        for (let d = 0; d < 32; d++) {
+          let rem = d << 10;
+          for (let i = 4; i >= 0; i--) if (rem & (1 << (i + 10))) rem ^= (0x537 << i);
+          const valid = ((d << 10) | rem) ^ 0x5412;
+          const dist = Math.min(popcount15(bits1 ^ valid), popcount15(bits2 ^ valid));
+          if (dist < bestDist) { bestDist = dist; best = { ec: EC_MAP[(d >> 3) & 3], mask: d & 7 }; }
+        }
+        return best;
+      }
+
+      function maskFn(mask, r, c) {
+        if (mask === 0) return (r + c) % 2 === 0;
+        if (mask === 1) return r % 2 === 0;
+        if (mask === 2) return c % 3 === 0;
+        if (mask === 3) return (r + c) % 3 === 0;
+        if (mask === 4) return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0;
+        if (mask === 5) return ((r * c) % 2 + (r * c) % 3) === 0;
+        if (mask === 6) return (((r * c) % 2 + (r * c) % 3) % 2) === 0;
+        return (((r + c) % 2 + (r * c) % 3) % 2) === 0;
+      }
+
+      function buildFuncMap(ver) {
+        const size = 17 + 4 * ver;
+        const fn = Array.from({ length: size }, () => new Uint8Array(size));
+        const markBox = (r0, c0, h, w) => {
+          for (let r = Math.max(0, r0); r < Math.min(size, r0 + h); r++)
+            for (let c = Math.max(0, c0); c < Math.min(size, c0 + w); c++) fn[r][c] = 1;
+        };
+        markBox(0, 0, 9, 9);
+        markBox(0, size - 8, 9, 8);
+        markBox(size - 8, 0, 8, 9);
+        for (let i = 0; i < size; i++) { fn[6][i] = 1; fn[i][6] = 1; }
+        const apos = ALIGN[ver] || [];
+        for (const r of apos) for (const c of apos) {
+          if ((r === 6 && c === 6) || (r === 6 && c === size - 7) || (r === size - 7 && c === 6)) continue;
+          markBox(r - 2, c - 2, 5, 5);
+        }
+        if (ver >= 7) { markBox(0, size - 11, 6, 3); markBox(size - 11, 0, 3, 6); }
+        return fn;
+      }
+
+      function decodeMatrix(mat) {
+        const size = mat.length;
+        const ver = Math.round((size - 17) / 4);
+        if (ver < 1 || ver > 16 || 17 + 4 * ver !== size) return null;
+
+        const fCoords1 = [[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+        const fCoords2 = [[size-1,8],[size-2,8],[size-3,8],[size-4,8],[size-5,8],[size-6,8],[size-7,8],[8,size-8],[8,size-7],[8,size-6],[8,size-5],[8,size-4],[8,size-3],[8,size-2],[8,size-1]];
+        let f1 = 0, f2 = 0;
+        for (let i = 0; i < 15; i++) {
+          if (mat[fCoords1[i][0]][fCoords1[i][1]]) f1 |= (1 << (14 - i));
+          if (mat[fCoords2[i][0]][fCoords2[i][1]]) f2 |= (1 << (14 - i));
+        }
+        const fmt = decodeFormatInfo(f1, f2);
+        if (!fmt || !VSPEC[fmt.ec] || !VSPEC[fmt.ec][ver]) return null;
+
+        const [totalDataCw, ecCw, g1Blocks, g1DataCw, g2Blocks, g2DataCw] = VSPEC[fmt.ec][ver];
+        const isFunc = buildFuncMap(ver);
+        const bits = [];
+        let col = size - 1, upward = true;
+        while (col > 0) {
+          if (col === 6) col--;
+          for (let step = 0; step < size; step++) {
+            const r = upward ? (size - 1 - step) : step;
+            for (const dc of [0, -1]) {
+              const c = col + dc;
+              if (!isFunc[r][c]) {
+                let b = mat[r][c] ? 1 : 0;
+                if (maskFn(fmt.mask, r, c)) b ^= 1;
+                bits.push(b);
+              }
+            }
+          }
+          upward = !upward;
+          col -= 2;
+        }
+        const totalCw = totalDataCw + ecCw * (g1Blocks + g2Blocks);
+        if (bits.length < totalCw * 8) return null;
+        const codewords = new Uint8Array(totalCw);
+        for (let i = 0; i < totalCw; i++) {
+          let byte = 0;
+          for (let b = 0; b < 8; b++) byte = (byte << 1) | bits[i * 8 + b];
+          codewords[i] = byte;
+        }
+
+        const numBlocks = g1Blocks + g2Blocks;
+        const dataCols = [];
+        for (let b = 0; b < g1Blocks; b++) dataCols.push(new Uint8Array(g1DataCw));
+        for (let b = 0; b < g2Blocks; b++) dataCols.push(new Uint8Array(g2DataCw));
+        const ecCols = Array.from({ length: numBlocks }, () => new Uint8Array(ecCw));
+
+        let idx = 0;
+        const maxDataLen = g2Blocks ? g2DataCw : g1DataCw;
+        for (let i = 0; i < maxDataLen; i++) {
+          for (let b = 0; b < numBlocks; b++) {
+            if (i < dataCols[b].length) dataCols[b][i] = codewords[idx++];
+          }
+        }
+        for (let i = 0; i < ecCw; i++) {
+          for (let b = 0; b < numBlocks; b++) ecCols[b][i] = codewords[idx++];
+        }
+
+        const fullData = new Uint8Array(totalDataCw);
+        let outPos = 0;
+        for (let b = 0; b < numBlocks; b++) {
+          const blk = new Uint8Array(dataCols[b].length + ecCw);
+          blk.set(dataCols[b], 0);
+          blk.set(ecCols[b], dataCols[b].length);
+          const fixed = rsCorrectBlock(blk, ecCw);
+          if (!fixed) return null;
+          fullData.set(fixed.subarray(0, dataCols[b].length), outPos);
+          outPos += dataCols[b].length;
+        }
+
+        // Leitura do stream de bits (Modo Byte = 0100)
+        let bitPos = 0;
+        const readBits = n => {
+          let v2 = 0;
+          for (let i = 0; i < n; i++) {
+            const byteIdx = bitPos >> 3, bitIdx = 7 - (bitPos & 7);
+            v2 = (v2 << 1) | ((fullData[byteIdx] >> bitIdx) & 1);
+            bitPos++;
+          }
+          return v2;
+        };
+        const mode = readBits(4);
+        if (mode !== 4) return null;
+        const charCount = readBits(ver <= 9 ? 8 : 16);
+        if (bitPos + charCount * 8 > fullData.length * 8) return null;
+        const utf8 = new Uint8Array(charCount);
+        for (let i = 0; i < charCount; i++) utf8[i] = readBits(8);
+        return new TextDecoder("utf-8").decode(utf8);
+      }
+
+      // Detector rápido 1:1:3:1:1 + homografia perspectiva sobre ImageData RGBA
+      function checkRatio(counts) {
+        const total = counts[0] + counts[1] + counts[2] + counts[3] + counts[4];
+        if (total < 7) return false;
+        const mod = total / 7.0, tol = mod * 0.65;
+        return (
+          Math.abs(mod - counts[0]) < tol &&
+          Math.abs(mod - counts[1]) < tol &&
+          Math.abs(3 * mod - counts[2]) < 3 * tol &&
+          Math.abs(mod - counts[3]) < tol &&
+          Math.abs(mod - counts[4]) < tol
+        );
+      }
+
+      function solveHomography(src, dst) {
+        // Resolve sistema linear 8x8 de homografia projetiva (u,v) -> (x,y)
+        const A = [], B = [];
+        for (let i = 0; i < 4; i++) {
+          const [u, v] = src[i], [x, y] = dst[i];
+          A.push([u, v, 1, 0, 0, 0, -u * x, -v * x]); B.push(x);
+          A.push([0, 0, 0, u, v, 1, -u * y, -v * y]); B.push(y);
+        }
+        for (let col = 0; col < 8; col++) {
+          let piv = col;
+          for (let r = col + 1; r < 8; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+          if (Math.abs(A[piv][col]) < 1e-9) return null;
+          [A[col], A[piv]] = [A[piv], A[col]]; [B[col], B[piv]] = [B[piv], B[col]];
+          const div = A[col][col];
+          for (let c = col; c < 8; c++) A[col][c] /= div;
+          B[col] /= div;
+          for (let r = 0; r < 8; r++) {
+            if (r === col) continue;
+            const f = A[r][col];
+            for (let c = col; c < 8; c++) A[r][c] -= f * A[col][c];
+            B[r] -= f * B[col];
+          }
+        }
+        return B;
+      }
+
+      function decodeFromRGBA(rgba, width, height) {
+        // 1. Luminância + limiar adaptativo por blocos 8x8
+        const gray = new Uint8Array(width * height);
+        for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
+          gray[i] = (rgba[p] * 77 + rgba[p + 1] * 150 + rgba[p + 2] * 29) >> 8;
+        }
+        const bw = Math.max(16, width >> 3), bh = Math.max(16, height >> 3);
+        const colsB = Math.ceil(width / bw), rowsB = Math.ceil(height / bh);
+        const means = new Uint8Array(colsB * rowsB);
+        for (let br = 0; br < rowsB; br++) {
+          for (let bc = 0; bc < colsB; bc++) {
+            let sum = 0, cnt = 0, mn = 255, mx = 0;
+            const y0 = br * bh, y1 = Math.min(height, y0 + bh), x0 = bc * bw, x1 = Math.min(width, x0 + bw);
+            for (let y = y0; y < y1; y += 2) {
+              for (let x = x0; x < x1; x += 2) {
+                const g = gray[y * width + x];
+                sum += g; cnt++;
+                if (g < mn) mn = g;
+                if (g > mx) mx = g;
+              }
+            }
+            means[br * colsB + bc] = (mx - mn < 24) ? (mn > 128 ? 250 : 5) : Math.floor(sum / Math.max(1, cnt));
+          }
+        }
+        const bin = new Uint8Array(width * height); // 1 = preto (módulo escuro)
+        for (let y = 0; y < height; y++) {
+          const br = Math.min(rowsB - 1, Math.floor(y / bh));
+          for (let x = 0; x < width; x++) {
+            const bc = Math.min(colsB - 1, Math.floor(x / bw));
+            bin[y * width + x] = gray[y * width + x] < means[br * colsB + bc] - 4 ? 1 : 0;
+          }
+        }
+
+        // 2. Busca dos 3 padrões Finder 1:1:3:1:1
+        const centers = [];
+        const crossCheckV = (startY, centerX, maxCount, totalH) => {
+          const c = [0, 0, 0, 0, 0];
+          let y = startY;
+          while (y >= 0 && bin[y * width + centerX]) { c[2]++; y--; }
+          if (y < 0) return null;
+          while (y >= 0 && !bin[y * width + centerX] && c[1] <= maxCount) { c[1]++; y--; }
+          if (y < 0 || c[1] > maxCount) return null;
+          while (y >= 0 && bin[y * width + centerX] && c[0] <= maxCount) { c[0]++; y--; }
+          if (c[0] > maxCount) return null;
+          y = startY + 1;
+          while (y < height && bin[y * width + centerX]) { c[2]++; y++; }
+          if (y >= height) return null;
+          while (y < height && !bin[y * width + centerX] && c[3] <= maxCount) { c[3]++; y++; }
+          if (y >= height || c[3] > maxCount) return null;
+          while (y < height && bin[y * width + centerX] && c[4] <= maxCount) { c[4]++; y++; }
+          if (c[4] > maxCount) return null;
+          const tot = c[0] + c[1] + c[2] + c[3] + c[4];
+          if (5 * Math.abs(tot - totalH) >= 2 * totalH || !checkRatio(c)) return null;
+          return (y - c[4] - c[3] - c[2] / 2.0);
+        };
+        const crossCheckH = (centerX, centerY, maxCount, totalV) => {
+          const c = [0, 0, 0, 0, 0];
+          let x = Math.round(centerX), y = Math.round(centerY);
+          if (y < 0 || y >= height || x < 0 || x >= width) return null;
+          while (x >= 0 && bin[y * width + x]) { c[2]++; x--; }
+          if (x < 0) return null;
+          while (x >= 0 && !bin[y * width + x] && c[1] <= maxCount) { c[1]++; x--; }
+          if (x < 0 || c[1] > maxCount) return null;
+          while (x >= 0 && bin[y * width + x] && c[0] <= maxCount) { c[0]++; x--; }
+          if (c[0] > maxCount) return null;
+          x = Math.round(centerX) + 1;
+          while (x < width && bin[y * width + x]) { c[2]++; x++; }
+          if (x >= width) return null;
+          while (x < width && !bin[y * width + x] && c[3] <= maxCount) { c[3]++; x++; }
+          if (x >= width || c[3] > maxCount) return null;
+          while (x < width && bin[y * width + x] && c[4] <= maxCount) { c[4]++; x++; }
+          if (c[4] > maxCount) return null;
+          const tot = c[0] + c[1] + c[2] + c[3] + c[4];
+          if (5 * Math.abs(tot - totalV) >= totalV || !checkRatio(c)) return null;
+          return [x - c[4] - c[3] - c[2] / 2.0, tot / 7.0];
+        };
+
+        for (let y = 2; y < height - 2; y += 2) {
+          const sc = [0, 0, 0, 0, 0];
+          let state = 0;
+          for (let x = 0; x < width; x++) {
+            if (bin[y * width + x]) {
+              if ((state & 1) === 1) state++;
+              sc[state]++;
+            } else {
+              if ((state & 1) === 1) sc[state]++;
+              else if (state === 4) {
+                if (checkRatio(sc)) {
+                  const tot = sc[0] + sc[1] + sc[2] + sc[3] + sc[4];
+                  const cx0 = Math.round(x - sc[4] - sc[3] - sc[2] / 2.0);
+                  const cy = crossCheckV(y, cx0, sc[2] * 2, tot);
+                  if (cy !== null) {
+                    const hh = crossCheckH(cx0, cy, sc[2] * 2, tot);
+                    if (hh !== null) {
+                      const [cx, mod] = hh;
+                      let merged = false;
+                      for (const ex of centers) {
+                        if (Math.hypot(ex.x - cx, ex.y - cy) <= Math.max(ex.mod, mod) * 3.5) {
+                          ex.x = (ex.x * ex.count + cx) / (ex.count + 1);
+                          ex.y = (ex.y * ex.count + cy) / (ex.count + 1);
+                          ex.mod = (ex.mod * ex.count + mod) / (ex.count + 1);
+                          ex.count++;
+                          merged = true;
+                          break;
+                        }
+                      }
+                      if (!merged) centers.push({ x: cx, y: cy, mod, count: 1 });
+                    }
+                  }
+                }
+                state = 3;
+                sc[0] = sc[2]; sc[1] = sc[3]; sc[2] = sc[4]; sc[3] = 1; sc[4] = 0;
+              } else {
+                state++;
+                sc[state]++;
+              }
+            }
+          }
+        }
+
+        const strong = centers.filter(c => c.count >= 2).sort((a, b) => b.count - a.count).slice(0, 6);
+        if (strong.length < 3) return null;
+
+        // Escolhe o trio que forma um triângulo retângulo isósceles (TL, TR, BL)
+        let bestTri = null, bestErr = 1e9;
+        for (let i = 0; i < strong.length; i++) {
+          for (let j = i + 1; j < strong.length; j++) {
+            for (let k = j + 1; k < strong.length; k++) {
+              const pts = [strong[i], strong[j], strong[k]];
+              const d01 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+              const d12 = Math.hypot(pts[1].x - pts[2].x, pts[1].y - pts[2].y);
+              const d02 = Math.hypot(pts[0].x - pts[2].x, pts[0].y - pts[2].y);
+              let tl, a, b, s1, s2, hyp;
+              if (d01 >= d12 && d01 >= d02) { tl = pts[2]; a = pts[0]; b = pts[1]; hyp = d01; s1 = d12; s2 = d02; }
+              else if (d12 >= d01 && d12 >= d02) { tl = pts[0]; a = pts[1]; b = pts[2]; hyp = d12; s1 = d01; s2 = d02; }
+              else { tl = pts[1]; a = pts[0]; b = pts[2]; hyp = d02; s1 = d01; s2 = d12; }
+              if (s1 < 20 || s2 < 20) continue;
+              const err = Math.abs(s1 - s2) / Math.max(s1, s2) + Math.abs(hyp - Math.hypot(s1, s2)) / hyp;
+              if (err < 0.28 && err < bestErr) {
+                const cross = (a.x - tl.x) * (b.y - tl.y) - (a.y - tl.y) * (b.x - tl.x);
+                const [tr, bl] = cross > 0 ? [a, b] : [b, a];
+                bestErr = err;
+                bestTri = { tl, tr, bl };
+              }
+            }
+          }
+        }
+        if (!bestTri) return null;
+        const { tl, tr, bl } = bestTri;
+        const avgMod = (tl.mod + tr.mod + bl.mod) / 3.0;
+        const distH = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+        const distV = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+        const estVer = Math.round((((distH + distV) / (2 * avgMod)) - 10) / 4);
+
+        for (const ver of [estVer, estVer - 1, estVer + 1]) {
+          if (ver < 1 || ver > 16) continue;
+          const size = 17 + 4 * ver;
+          // 4º ponto: padrão de alinhamento inferior direito em (size - 6.5, size - 6.5) para ver >= 2
+          let brSrc = [size - 3.5, size - 3.5];
+          let brDst = [tr.x + bl.x - tl.x, tr.y + bl.y - tl.y];
+          if (ver >= 2) {
+            const scaleF = (size - 13) / (size - 7);
+            const estAx = tl.x + (tr.x + bl.x - 2 * tl.x) * scaleF;
+            const estAy = tl.y + (tr.y + bl.y - 2 * tl.y) * scaleF;
+            const rad = Math.max(6, Math.round(avgMod * 4.5));
+            let foundA = null, bestADist = 1e9;
+            for (let dy = -rad; dy <= rad; dy++) {
+              const yy = Math.round(estAy) + dy;
+              if (yy < 3 || yy >= height - 3) continue;
+              for (let dx = -rad; dx <= rad; dx++) {
+                const xx = Math.round(estAx) + dx;
+                if (xx < 3 || xx >= width - 3 || !bin[yy * width + xx]) continue;
+                // Padrão 1:1:1 (preto no centro, branco ao redor a ~1 módulo, preto a ~2 módulos)
+                const m1 = Math.max(1, Math.round(avgMod));
+                const m2 = Math.max(2, Math.round(avgMod * 2));
+                if (xx - m2 < 0 || xx + m2 >= width || yy - m2 < 0 || yy + m2 >= height) continue;
+                if (!bin[yy * width + (xx - m1)] && !bin[yy * width + (xx + m1)] &&
+                    !bin[(yy - m1) * width + xx] && !bin[(yy + m1) * width + xx] &&
+                    bin[yy * width + (xx - m2)] && bin[yy * width + (xx + m2)]) {
+                  const d = dx * dx + dy * dy;
+                  if (d < bestADist) { bestADist = d; foundA = [xx + 0.5, yy + 0.5]; }
+                }
+              }
+            }
+            if (foundA) {
+              brSrc = [size - 6.5, size - 6.5];
+              brDst = foundA;
+            }
+          }
+
+          const candidates4 = [[[size - 3.5, size - 3.5], [tr.x + bl.x - tl.x, tr.y + bl.y - tl.y]]];
+          if (brSrc[0] !== size - 3.5) candidates4.push([brSrc, brDst]);
+          for (const [cSrc, cDst] of candidates4) {
+            const H = solveHomography([[3.5, 3.5], [size - 3.5, 3.5], [3.5, size - 3.5], cSrc], [[tl.x, tl.y], [tr.x, tr.y], [bl.x, bl.y], cDst]);
+            if (!H) continue;
+            const mat = Array.from({ length: size }, () => new Uint8Array(size));
+            for (let r = 0; r < size; r++) {
+              const v = r + 0.5;
+              for (let c = 0; c < size; c++) {
+                const u = c + 0.5;
+                const den = H[6] * u + H[7] * v + 1.0;
+                const px = Math.round((H[0] * u + H[1] * v + H[2]) / den);
+                const py = Math.round((H[3] * u + H[4] * v + H[5]) / den);
+                if (px >= 0 && px < width && py >= 0 && py < height) mat[r][c] = bin[py * width + px];
+              }
+            }
+            const txt = decodeMatrix(mat);
+            if (txt) return txt;
+          }
+        }
+        return null;
+      }
+
+      return { decodeFromRGBA, decodeMatrix };
+    }
+
+    let activeScanStream = null, scanTimerId = 0, pureDecoder = null;
+    const stopCamScanner = () => {
+      if (scanTimerId) { clearTimeout(scanTimerId); scanTimerId = 0; }
+      if (activeScanStream) { activeScanStream.getTracks().forEach(t => t.stop()); activeScanStream = null; }
+    };
+
+    const openPcQrScannerModal = async () => {
+      stopCamScanner();
+      setDrawerOpen(false);
+      openModal(
+        "📷 Passo 2: Ler Sequência de QR Codes do PC",
+        `<div style="display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center;">
+          <p style="margin:0;font-size:12.5px;color:var(--muted);line-height:1.45;">
+            Agora clique em <b>▶ Iniciar sequência</b> na tela do S.O.M. no PC e aponte a câmera abaixo para o código até completar 100%.
+          </p>
+          <div style="width:100%;max-width:340px;aspect-ratio:1/1;background:#090f1a;border-radius:12px;overflow:hidden;border:2px solid var(--accent);position:relative;display:flex;align-items:center;justify-content:center;">
+            <video id="qrScanVideo" playsinline muted autoplay style="width:100%;height:100%;object-fit:cover;"></video>
+            <button id="btnTapStartCam" class="btn primary" type="button" style="display:none;position:absolute;padding:10px 16px;font-size:13px;z-index:3;">📷 Tocar para ligar a câmera</button>
+          </div>
+          <div id="qrScanStatus" class="badge" style="font-size:12px;padding:5px 12px;">Iniciando câmera traseira…</div>
+          <div style="width:100%;max-width:340px;height:9px;background:var(--bg3);border-radius:99px;overflow:hidden;">
+            <div id="qrScanBar" style="width:0%;height:100%;background:#2ac99a;transition:width .2s;"></div>
+          </div>
+          <div id="qrPartsGrid" style="display:flex;gap:5px;flex-wrap:wrap;justify-content:center;max-width:340px;"></div>
+        </div>`
+      );
+      const origClose = closeModal;
+      const statusEl = $("#qrScanStatus"), barEl = $("#qrScanBar"), vidEl = $("#qrScanVideo"), tapBtn = $("#btnTapStartCam"), partsGrid = $("#qrPartsGrid");
+      $("#modalCloseTop").onclick = () => { stopCamScanner(); origClose(); };
+      $("#modalCloseBtn").onclick = () => { stopCamScanner(); origClose(); };
+
+      if (!pureDecoder) pureDecoder = createSomPureQrDecoder();
+      let nativeDetector = null;
+      if (typeof BarcodeDetector !== "undefined") {
+        try {
+          const fmts = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : ["qr_code"];
+          if (fmts.includes("qr_code")) nativeDetector = new BarcodeDetector({ formats: ["qr_code"] });
+        } catch (_) { nativeDetector = null; }
+      }
+
+      const workCanvas = document.createElement("canvas");
+      const workCtx = workCanvas.getContext("2d", { willReadFrequently: true });
+      let curSid = "", totalParts = 0;
+      const parts = new Map();
+
+      const renderPartPills = () => {
+        if (totalParts <= 1) { partsGrid.innerHTML = ""; return; }
+        let html = "";
+        for (let i = 1; i <= totalParts; i++) {
+          const got = parts.has(i);
+          html += `<span style="font-size:11px;padding:2px 7px;border-radius:99px;font-weight:700;background:${got ? '#134e3a' : 'var(--bg3)'};color:${got ? '#53d2a8' : 'var(--muted)'};border:1px solid ${got ? '#2ac99a' : 'var(--border)'};">${got ? '✓' : '○'} ${i}</span>`;
+        }
+        partsGrid.innerHTML = html;
+      };
+
+      const finishWithToken = async (tok) => {
+        const parsed = await decodeHashToken(tok);
+        if (parsed && Array.isArray(parsed.equipment)) {
+          stopCamScanner();
+          origClose();
+          applyLoadedPayload(parsed, true);
+          try { navigator.vibrate?.([50, 40, 80]); } catch (_) {}
+          toast(`Inventário importado (${parsed.equipment.length} equipamentos, ${parsed.cables.length} cabos)!`);
+        }
+      };
+
+      const handleRawQrString = async (raw) => {
+        if (!raw) return false;
+        if (raw.includes("#full=")) {
+          const tok = new URLSearchParams(raw.split("#")[1] || "").get("full");
+          if (tok) { barEl.style.width = "100%"; await finishWithToken(tok); return true; }
+        } else if (raw.includes("#scan=1")) {
+          statusEl.textContent = "PWA já aberto! Clique em '▶ Iniciar sequência' na tela do PC.";
+          return false;
+        } else if (raw.startsWith("http://") || raw.startsWith("https://")) {
+          stopCamScanner();
+          window.location.href = raw;
+          return true;
+        } else if (raw.startsWith("SOMF1|")) {
+          const segs = raw.split("|");
+          if (segs.length >= 4) {
+            const sid = segs[1];
+            const [idxStr, totStr] = segs[2].split("/");
+            const idx = parseInt(idxStr, 10), tot = parseInt(totStr, 10);
+            const chunk = segs.slice(3).join("|");
+            if (!idx || !tot || idx < 1 || idx > tot) return false;
+            if (sid !== curSid) { curSid = sid; totalParts = tot; parts.clear(); }
+            if (!parts.has(idx)) {
+              parts.set(idx, chunk);
+              try { navigator.vibrate?.(25); } catch (_) {}
+              const pct = Math.round((parts.size / totalParts) * 100);
+              barEl.style.width = pct + "%";
+              renderPartPills();
+              const missing = [];
+              for (let m = 1; m <= totalParts; m++) if (!parts.has(m)) missing.push(m);
+              statusEl.textContent = missing.length
+                ? `Lidos ${parts.size}/${totalParts} (${pct}%) · faltam: ${missing.slice(0, 5).join(", ")}`
+                : `100% lido! Descompactando inventário…`;
+              if (parts.size === totalParts) {
+                const fullTok = Array.from({ length: totalParts }, (_, k) => parts.get(k + 1) || "").join("");
+                await finishWithToken(fullTok);
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      };
+
+      const scanTick = async () => {
+        if (!activeScanStream) return;
+        try {
+          if (vidEl.readyState >= 2 && vidEl.videoWidth > 0) {
+            // 1º tenta BarcodeDetector nativo (se suportado)
+            if (nativeDetector) {
+              try {
+                const codes = await nativeDetector.detect(vidEl);
+                for (const c of codes) {
+                  if (await handleRawQrString(String(c.rawValue || "").trim())) return;
+                }
+              } catch (_) {}
+            }
+            // 2º decodificador QR ISO em JS puro (funciona no Brave, Firefox, iOS e totalmente offline!)
+            const vw = vidEl.videoWidth, vh = vidEl.videoHeight;
+            const side = Math.min(vw, vh);
+            const sx = Math.floor((vw - side) / 2), sy = Math.floor((vh - side) / 2);
+            const targetDim = Math.min(480, side);
+            workCanvas.width = targetDim;
+            workCanvas.height = targetDim;
+            workCtx.drawImage(vidEl, sx, sy, side, side, 0, 0, targetDim, targetDim);
+            const imgData = workCtx.getImageData(0, 0, targetDim, targetDim);
+            const jsDecoded = pureDecoder.decodeFromRGBA(imgData.data, targetDim, targetDim);
+            if (jsDecoded && await handleRawQrString(jsDecoded.trim())) return;
+          }
+        } catch (_) {}
+        scanTimerId = setTimeout(scanTick, 95);
+      };
+
+      const startCamera = async () => {
+        tapBtn.style.display = "none";
+        if (!navigator.mediaDevices?.getUserMedia) {
+          statusEl.textContent = "Câmera bloqueada (acesse pelo link https:// do seu GitHub Pages).";
+          return;
+        }
+        try {
+          activeScanStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+          });
+          vidEl.srcObject = activeScanStream;
+          await vidEl.play();
+          statusEl.textContent = "Câmera ativa! Aponte para o QR Code na tela do PC…";
+          scanTimerId = setTimeout(scanTick, 120);
+        } catch (err) {
+          tapBtn.style.display = "inline-flex";
+          statusEl.textContent = "Toque no botão acima e permita o uso da câmera para ler os QR Codes.";
+        }
+      };
+
+      tapBtn.onclick = () => startCamera();
+      await startCamera();
+    };
+    window._somOpenPcScanner = openPcQrScannerModal;
+    $("#btnScanPcQrDrawer").addEventListener("click", openPcQrScannerModal);
+    $("#btnScanPcQrWelcome").addEventListener("click", openPcQrScannerModal);
+    $("#quickScanQrBtn").addEventListener("click", openPcQrScannerModal);
 
     const toggleLock = () => {
       state.locked = !state.locked;
